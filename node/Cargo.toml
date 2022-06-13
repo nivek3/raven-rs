@@ -1,12 +1,24 @@
 
 [package]
-name = "node"
+name = "graph-node"
 version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-core = { path = "../core" }
+env_logger="0.9.0"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
+thiserror = "1.0.25"
+regex = "1.5.4"
+graph = { path = "../graph" }
+graph-chain-ethereum = { path = "../chain/ethereum" }
+graph-store-postgres = { path = "../store/postgres" }
+futures = { version = "0.3.1", features = ["compat"] }
+serde = { version = "1.0.135", features = ["rc"] }
+serde_regex = "1.1.0"
+
+diesel = "1.4.8"
+toml = "0.5.8"
+shellexpand = "2.1.0"
