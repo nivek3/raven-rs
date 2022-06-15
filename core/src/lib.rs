@@ -1,6 +1,5 @@
 mod metrics;
 
-pub use crate::blockchain::BlockIngestor;
 pub use crate::metrics::MetricsRegistry;
 
 #[cfg(test)]

@@ -1,22 +1,22 @@
-use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
-use crate::config::Config;
-use graph::blockchain::ChainIdentifier;
-use graph::prelude::o;
-use graph::prelude::{info, Logger};
-use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
+use graph::{
+    blockchain::ChainIdentifier,
+    prelude::{
+        o, {info, Logger},
+    },
+    util::security::SafeDisplay,
+};
+
+use crate::config::{Config, Shard};
 use graph_store_postgres::{
-    BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    NotificationSender, Store as DieselStore, SubgraphStore,
-    SubscriptionManager, PRIMARY_SHARD,
+    connection_pool::{ConnectionPool, PoolName},
+    BlockStore as DieselBlockStore, Store as DieselStore,
 };
 
 pub struct StoreBuilder {
-    logger: Logger,
-    subscription_manager: Arc<SubscriptionManager>,
-    chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
-    /// Map network names to the shards where they are/should be stored
+    pub logger: Logger,
+    pub pool: ConnectionPool,
 }
 
 impl StoreBuilder {
@@ -24,49 +24,34 @@ impl StoreBuilder {
     /// setup whereas other methods here only get connections for an already
     /// initialized store
     pub async fn new(logger: &Logger, config: &Config) -> Self {
-        let primary_shard = config.primary_store().clone();
-
-        let subscription_manager = Arc::new(SubscriptionManager::new(
-            logger.cheap_clone(),
-            primary_shard.connection.to_owned(),
-        ));
-
-        let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-            &logger,
-            primary_shard.connection.to_owned(),
-        ));
+        let pool = Self::make_pg_pool(logger, config);
+        pool.setup().await;
 
         Self {
-            logger: logger.cheap_clone(),
-            subscription_manager,
-            chain_head_update_listener,
+            logger: logger.clone(),
+            pool,
         }
+    }
+
+    pub fn make_pg_pool(logger: &Logger, config: &Config) -> ConnectionPool {
+        let name = "primary";
+        let shard = config.shard.clone();
+        let logger = logger.new(o!("shard" => name.clone().to_string()));
+        let conn_pool = Self::main_pool(&logger, name, &shard);
+        conn_pool
     }
 
     /// Create a connection pool for the main database of the primary shard
     /// without connecting to all the other configured databases
-    pub fn main_pool(
-        logger: &Logger,
-        name: &str,
-        shard: &Shard,
-        registry: Arc<dyn MetricsRegistry>,
-        servers: Arc<Vec<ForeignServer>>,
-    ) -> ConnectionPool {
+    pub fn main_pool(logger: &Logger, name: &str, shard: &Shard) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
-        let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
-            "we can determine the pool size for store {}",
-            name
-        ));
-        let fdw_pool_size = shard.fdw_pool_size.size_for(node, name).expect(&format!(
-            "we can determine the fdw pool size for store {}",
-            name
-        ));
+        let pool_size: u32 = 10;
+        let fdw_pool_size: u32 = 5;
         info!(
             logger,
             "Connecting to Postgres";
             "url" => SafeDisplay(shard.connection.as_str()),
             "conn_pool_size" => pool_size,
-            "weight" => shard.weight
         );
         ConnectionPool::create(
             name,
@@ -75,20 +60,28 @@ impl StoreBuilder {
             pool_size,
             Some(fdw_pool_size),
             &logger,
-            registry.cheap_clone(),
-            servers,
         )
     }
 
-    pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {
-        self.subscription_manager.cheap_clone()
+    pub fn network_store(self, networks: Vec<(String, Vec<ChainIdentifier>)>) -> Arc<DieselStore> {
+        Self::make_store(&self.logger, &self.pool, networks)
     }
 
-    pub fn chain_head_update_listener(&self) -> Arc<PostgresChainHeadUpdateListener> {
-        self.chain_head_update_listener.clone()
+    pub fn make_store(
+        logger: &Logger,
+        pool: &ConnectionPool,
+        networks: Vec<(String, Vec<ChainIdentifier>)>,
+    ) -> Arc<DieselStore> {
+        let logger = logger.new(o!("component" => "BlockStore"));
+
+        let block_store = Arc::new(
+            DieselBlockStore::new(logger, networks, &pool).expect("Creating the BlockStore works"),
+        );
+
+        Arc::new(DieselStore::new(block_store))
     }
 
     pub fn primary_pool(&self) -> ConnectionPool {
-        self.pools.get(&*PRIMARY_SHARD).unwrap().clone()
+        self.pool.clone()
     }
 }

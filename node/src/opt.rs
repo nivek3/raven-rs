@@ -1,4 +1,3 @@
-use lazy_static::lazy_static;
 use structopt::StructOpt;
 
 use crate::config;
@@ -63,16 +62,16 @@ pub struct Opt {
     #[structopt(
         long,
         min_values=0,
-        required_unless_one = &["ethereum-ws", "ethereum-ipc", "config"],
-        conflicts_with_all = &["ethereum-ws", "ethereum-ipc", "config"],
+        required_unless_one = &["ethereum-ws", "config"],
+        conflicts_with_all = &["ethereum-ws", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:URL",
         env="ETHEREUM_RPC",
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'",
     )]
     pub ethereum_rpc: Vec<String>,
     #[structopt(long, min_values=0,
-        required_unless_one = &["ethereum-rpc", "ethereum-ipc", "config"],
-        conflicts_with_all = &["ethereum-rpc", "ethereum-ipc", "config"],
+        required_unless_one = &["ethereum-rpc", "config"],
+        conflicts_with_all = &["ethereum-rpc", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:URL",
         env="ETHEREUM_WS",
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive`, and an Ethereum WebSocket URL, separated by a ':'",
@@ -221,7 +220,6 @@ impl From<Opt> for config::Opt {
             config,
             store_connection_pool_size,
             postgres_host_weights,
-            postgres_secondary_hosts,
             disable_block_ingestor,
             node_id,
             ethereum_rpc,

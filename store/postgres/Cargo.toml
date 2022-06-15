@@ -6,6 +6,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = "0.1.50"
 postgres = "0.19.1"
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 serde = { version = "1.0", features = ["derive"] }

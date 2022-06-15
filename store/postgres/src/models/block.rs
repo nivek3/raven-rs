@@ -12,5 +12,5 @@ pub struct Block {
     pub id: i64,
     pub number: i64,
     pub hash: String,
-    pub parent_hash: String,
+    pub parent_hash: Option<String>,
 }

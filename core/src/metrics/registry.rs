@@ -1,4 +1,4 @@
 #[derive(Debug, Clone)]
 pub struct MetricsRegistry {
-    count: usize,
+    pub count: usize,
 }

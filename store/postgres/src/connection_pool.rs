@@ -5,18 +5,16 @@ use diesel::{
 };
 use diesel::{sql_query, RunQueryDsl};
 
-use graph::prelude::tokio;
-use graph::prelude::tokio::time::Instant;
-use graph::util::timed_rw_lock::TimedMutex;
 use graph::{
     constraint_violation,
     prelude::{
         anyhow::{self, anyhow, bail},
-        crit, debug, error, info, o,
+        crit, debug, error, info, o, tokio,
         tokio::sync::Semaphore,
-        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Logger, MovingStats,
-        PoolWaitStats, StoreError,
+        tokio::time::Instant,
+        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Logger, StoreError,
     },
+    util::timed_rw_lock::TimedMutex,
 };
 
 use std::fmt::{self, Write};
@@ -101,7 +99,7 @@ pub struct ConnectionPool {
 impl fmt::Debug for ConnectionPool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConnectionPool")
-            .field("shard", &self.shard)
+            .field("shard", &self)
             .finish()
     }
 }
@@ -164,7 +162,6 @@ impl ConnectionPool {
         pool_size: u32,
         fdw_pool_size: Option<u32>,
         logger: &Logger,
-        registry: Arc<dyn MetricsRegistry>,
     ) -> ConnectionPool {
         let state_tracker = PoolStateTracker::new();
         let pool = PoolInner::create(
@@ -174,10 +171,8 @@ impl ConnectionPool {
             pool_size,
             fdw_pool_size,
             logger,
-            registry,
             state_tracker.clone(),
         );
-        let shard = pool.shard.clone();
         let pool_state = if pool_name.is_replica() {
             PoolState::Ready(Arc::new(pool))
         } else {
@@ -195,7 +190,7 @@ impl ConnectionPool {
     pub fn skip_setup(&self) {
         let mut guard = self.inner.lock(&self.logger);
         match &*guard {
-            PoolState::Created(pool, _) => *guard = PoolState::Ready(pool.clone()),
+            PoolState::Created(pool) => *guard = PoolState::Ready(pool.clone()),
             PoolState::Ready(_) => { /* nothing to do */ }
         }
     }
@@ -325,25 +320,9 @@ impl ConnectionPool {
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
         let pool = match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.clone(),
+            PoolState::Created(pool) | PoolState::Ready(pool) => pool.clone(),
         };
         pool.query_permit().await
-    }
-
-    pub(crate) fn wait_stats(&self) -> PoolWaitStats {
-        match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.wait_stats.clone(),
-        }
-    }
-
-    /// Mirror key tables from the primary into our own schema. We do this
-    /// by manually inserting or deleting rows through comparing it with the
-    /// table on the primary. Once we drop support for PG 9.6, we can
-    /// simplify all this and achieve the same result with logical
-    /// replication.
-    pub(crate) async fn mirror_primary_tables(&self) -> Result<(), StoreError> {
-        let pool = self.get_ready()?;
-        pool.mirror_primary_tables().await
     }
 }
 
@@ -365,15 +344,13 @@ fn brief_error_msg(error: &dyn std::error::Error) -> String {
 #[derive(Clone)]
 struct ErrorHandler {
     logger: Logger,
-    counter: Counter,
     state_tracker: PoolStateTracker,
 }
 
 impl ErrorHandler {
-    fn new(logger: Logger, counter: Counter, state_tracker: PoolStateTracker) -> Self {
+    fn new(logger: Logger, state_tracker: PoolStateTracker) -> Self {
         Self {
             logger,
-            counter,
             state_tracker,
         }
     }
@@ -406,7 +383,6 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
             return;
         }
 
-        self.counter.inc();
         if self.state_tracker.is_available() {
             error!(self.logger, "Postgres connection error"; "error" => msg);
         }
@@ -417,29 +393,15 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
 #[derive(Clone)]
 struct EventHandler {
     logger: Logger,
-    wait_stats: PoolWaitStats,
     state_tracker: PoolStateTracker,
 }
 
 impl EventHandler {
-    fn new(
-        logger: Logger,
-        wait_stats: PoolWaitStats,
-        const_labels: HashMap<String, String>,
-        state_tracker: PoolStateTracker,
-    ) -> Self {
+    fn new(logger: Logger, state_tracker: PoolStateTracker) -> Self {
         EventHandler {
             logger,
-            wait_stats,
             state_tracker,
         }
-    }
-
-    fn add_conn_wait_time(&self, duration: Duration) {
-        self.wait_stats
-            .write()
-            .unwrap()
-            .add_and_register(duration, &self.wait_gauge);
     }
 }
 
@@ -451,18 +413,14 @@ impl std::fmt::Debug for EventHandler {
 
 impl HandleEvent for EventHandler {
     fn handle_acquire(&self, _: e::AcquireEvent) {
-        self.size_gauge.inc();
         self.state_tracker.mark_available();
     }
 
     fn handle_checkout(&self, event: e::CheckoutEvent) {
-        self.count_gauge.inc();
-        self.add_conn_wait_time(event.duration());
         self.state_tracker.mark_available();
     }
 
     fn handle_timeout(&self, event: e::TimeoutEvent) {
-        self.add_conn_wait_time(event.timeout());
         if self.state_tracker.is_available() {
             error!(self.logger, "Connection checkout timed out";
                "wait_ms" => event.timeout().as_millis()
@@ -489,14 +447,12 @@ pub struct PoolInner {
     fdw_pool: Option<Pool<ConnectionManager<PgConnection>>>,
     limiter: Arc<Semaphore>,
     postgres_url: String,
-    pub(crate) wait_stats: PoolWaitStats,
 
     // Limits the number of graphql queries that may execute concurrently. Since one graphql query
     // may require multiple DB queries, it is useful to organize the queue at the graphql level so
     // that waiting queries consume few resources. Still this is placed here because the semaphore
     // is sized acording to the DB connection pool size.
     query_semaphore: Arc<tokio::sync::Semaphore>,
-    semaphore_wait_stats: Arc<RwLock<MovingStats>>,
 }
 
 impl PoolInner {
@@ -507,7 +463,6 @@ impl PoolInner {
         pool_size: u32,
         fdw_pool_size: Option<u32>,
         logger: &Logger,
-        registry: Arc<dyn MetricsRegistry>,
         state_tracker: PoolStateTracker,
     ) -> PoolInner {
         let logger_store = logger.new(o!("component" => "Store"));
@@ -518,26 +473,12 @@ impl PoolInner {
             map.insert("shard".to_string(), shard_name.to_owned());
             map
         };
-        let error_counter = registry
-            .global_counter(
-                "store_connection_error_count",
-                "The number of Postgres connections errors",
-                HashMap::new(),
-            )
-            .expect("failed to create `store_connection_error_count` counter");
+
         let error_handler = Box::new(ErrorHandler::new(
             logger_pool.clone(),
-            error_counter,
             state_tracker.clone(),
         ));
-        let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
-        let event_handler = Box::new(EventHandler::new(
-            logger_pool.clone(),
-            registry.cheap_clone(),
-            wait_stats.clone(),
-            const_labels.clone(),
-            state_tracker,
-        ));
+        let event_handler = Box::new(EventHandler::new(logger_pool.clone(), state_tracker));
 
         // Connect to Postgres
         let conn_manager = ConnectionManager::new(postgres_url.clone());
@@ -572,8 +513,6 @@ impl PoolInner {
             pool,
             fdw_pool,
             limiter,
-            wait_stats,
-            semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
             query_semaphore,
         }
     }
@@ -731,11 +670,7 @@ impl PoolInner {
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
         let start = Instant::now();
-        let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
-        self.semaphore_wait_stats
-            .write()
-            .unwrap()
-            .add_and_register(start.elapsed(), &self.semaphore_wait_gauge);
+        let permit = self.query_semaphore.clone().acquire_owned().await;
         permit.unwrap()
     }
 }
