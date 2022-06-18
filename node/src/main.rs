@@ -9,7 +9,7 @@ use graph::{
         anyhow::Error,
         http::HeaderMap,
         slog::{error, info, o, Logger},
-        tokio, ChainStore,
+        tokio,
     },
 };
 use std::sync::Arc;
@@ -21,7 +21,7 @@ mod config;
 mod opt;
 mod store_builder;
 
-use graph_chain_ethereum::{self as ethereum};
+use graph_chain_ethereum as ethereum;
 use graph_store_postgres::Store;
 use store_builder::StoreBuilder;
 
@@ -50,9 +50,8 @@ async fn main() {
     let block_polling_interval = Duration::from_millis(10);
     println!("config : {:?}", config);
     let store_builder = StoreBuilder::new(&logger, &config).await;
-    let primary_pool = store_builder.primary_pool();
 
-    let ethereum_networks = create_ethereum_networks(logger.clone())
+    let ethereum_networks = create_ethereum_networks(logger.clone(), config.clone())
         .await
         .expect("Failed to parse Ethereum networks");
 
@@ -108,7 +107,10 @@ async fn start_block_ingestor(
     });
 }
 
-async fn create_ethereum_networks(logger: Logger) -> Result<EthereumNetworks, Error> {
+async fn create_ethereum_networks(
+    logger: Logger,
+    _config: Config,
+) -> Result<EthereumNetworks, Error> {
     let mut networks = EthereumNetworks::new();
     let name = "mainnet".to_string();
     let hostname = "hostname".to_string();

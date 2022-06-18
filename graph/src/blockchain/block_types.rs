@@ -1,4 +1,6 @@
-use std::fmt;
+use anyhow::{anyhow, Context};
+use std::convert::TryFrom;
+use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
 use crate::components::store::BlockNumber;
@@ -44,6 +46,18 @@ impl From<Vec<u8>> for BlockHash {
     }
 }
 
+impl TryFrom<&str> for BlockHash {
+    type Error = anyhow::Error;
+
+    fn try_from(hash: &str) -> Result<Self, Self::Error> {
+        let hash = hash.trim_start_matches("0x");
+        let hash = hex::decode(hash)
+            .with_context(|| format!("Cannot parse H256 value from string `{}`", hash))?;
+
+        Ok(BlockHash(hash.as_slice().into()))
+    }
+}
+
 /// A block hash and block number from a specific chain block.
 ///
 /// Block numbers are signed 64 bit integers
@@ -64,18 +78,28 @@ impl BlockPtr {
         self.hash.hash_hex()
     }
 
-    pub fn hash_slice(&self) -> &[u8] {
-        self.hash.as_slice()
-    }
-
     /// Block number to be passed into the store. Panics if it does not fit in an i32.
     pub fn block_number(&self) -> BlockNumber {
         self.number
+    }
+
+    pub fn hash_as_h256(&self) -> H256 {
+        H256::from_slice(self.hash_slice())
+    }
+
+    pub fn hash_slice(&self) -> &[u8] {
+        self.hash.0.as_ref()
     }
 }
 
 impl<T> From<Block<T>> for BlockPtr {
     fn from(b: Block<T>) -> BlockPtr {
+        BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
+    }
+}
+
+impl<'a, T> From<&'a Block<T>> for BlockPtr {
+    fn from(b: &'a Block<T>) -> BlockPtr {
         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
     }
 }
@@ -111,6 +135,18 @@ impl From<(H256, i64)> for BlockPtr {
             panic!("block number out of range: {}", number);
         }
         BlockPtr::from((hash, number as u64))
+    }
+}
+
+impl TryFrom<(&str, i64)> for BlockPtr {
+    type Error = anyhow::Error;
+
+    fn try_from((hash, number): (&str, i64)) -> Result<Self, Self::Error> {
+        let hash = hash.trim_start_matches("0x");
+        let hash = H256::from_str(hash)
+            .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+
+        Ok(BlockPtr::from((hash, number)))
     }
 }
 

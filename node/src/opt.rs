@@ -87,13 +87,6 @@ pub struct Opt {
     pub ethereum_ipc: Vec<String>,
     #[structopt(
         long,
-        value_name = "HOST:PORT",
-        env = "IPFS",
-        help = "HTTP addresses of IPFS nodes"
-    )]
-    pub ipfs: Vec<String>,
-    #[structopt(
-        long,
         default_value = "8000",
         value_name = "PORT",
         help = "Port for the GraphQL HTTP server"
@@ -185,14 +178,6 @@ pub struct Opt {
     pub store_connection_pool_size: u32,
     #[structopt(
         long,
-        min_values = 1,
-        value_name = "NETWORK_NAME",
-        help = "One or more network names to index using built-in subgraphs \
-                (e.g. 'ethereum/mainnet')."
-    )]
-    pub network_subgraphs: Vec<String>,
-    #[structopt(
-        long,
         help = "Allows setting configurations that may result in incorrect Proofs of Indexing."
     )]
     pub unsafe_config: bool,
@@ -205,7 +190,6 @@ impl From<Opt> for config::Opt {
             config,
             store_connection_pool_size,
             postgres_host_weights,
-            postgres_secondary_hosts,
             disable_block_ingestor,
             node_id,
             ethereum_rpc,

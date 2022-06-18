@@ -2,19 +2,18 @@ use std::{
     collections::{HashMap, HashSet},
     iter::FromIterator,
     sync::{Arc, RwLock},
-    time::Duration,
 };
 
 use graph::{
     blockchain::ChainIdentifier,
     components::store::BlockStore as BlockStoreTrait,
-    constraint_violation,
     prelude::anyhow,
     prelude::{error, warn, BlockNumber, BlockPtr, Logger},
     prelude::{tokio, StoreError},
 };
 
-use crate::{connection_pool::ConnectionPool, store, ChainStore};
+use crate::chain_store::Storage;
+use crate::{connection_pool::ConnectionPool, ChainStore};
 
 #[derive(Copy, Clone)]
 pub enum ChainStatus {
@@ -77,10 +76,12 @@ impl BlockStore {
 
         for (chain_name, idents) in chains {
             let ident = reduce_idents(&chain_name, idents)?;
+            let storage = Storage::new();
             match ident {
                 Some(ident) => {
                     block_store.add_chain_store(
                         chain_name,
+                        &storage,
                         pool,
                         ident,
                         ChainStatus::Ingestible,
@@ -102,12 +103,14 @@ impl BlockStore {
     fn add_chain_store(
         &self,
         chain_name: String,
+        storage: &Storage,
         pool: &ConnectionPool,
         ident: ChainIdentifier,
         status: ChainStatus,
     ) -> Result<Arc<ChainStore>, StoreError> {
         let store = ChainStore::new(
             chain_name.clone().to_string(),
+            storage.clone(),
             &ident.clone(), //
             status,
             pool.clone(),

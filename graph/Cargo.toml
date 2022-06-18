@@ -32,7 +32,7 @@ url = "2.2.1"
 http = "0.2.5"
 lazy_static = "1.4.0"
 tokio = { version = "1.15.0", features = ["full"] }
-tokio-stream = { version = "0.1.8", features = ["sync"] }
+tokio-stream = { version = "0.1.9", features = ["sync"] }
 tokio-retry = "0.3.0"
 
 parking_lot = "0.11.2"

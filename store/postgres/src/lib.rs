@@ -5,6 +5,7 @@ pub mod block_store;
 pub mod chain_store;
 pub mod connection_pool;
 pub mod models;
+// pub mod schema;
 
 pub mod store;
 

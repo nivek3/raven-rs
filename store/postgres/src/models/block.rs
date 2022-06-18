@@ -1,16 +1,20 @@
 table! {
     ethereum_blocks(hash) {
-        id -> Int8,
         hash -> Varchar,
         number -> BigInt,
+        network_name -> Varchar,
         parent_hash -> Nullable<Varchar>,
+        data -> Jsonb,
     }
 }
 
-#[derive(Queryable)]
-pub struct Block {
-    pub id: i64,
-    pub number: i64,
-    pub hash: String,
-    pub parent_hash: Option<String>,
+table! {
+    ethereum_networks (name) {
+        name -> Varchar,
+        namespace -> Varchar,
+        head_block_hash -> Nullable<Varchar>,
+        head_block_number -> Nullable<BigInt>,
+        net_version -> Varchar,
+        genesis_block_hash -> Varchar,
+    }
 }

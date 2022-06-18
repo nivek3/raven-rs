@@ -1,5 +1,4 @@
 pub mod adapter;
-pub mod block;
 pub mod chain;
 
 mod ethereum_adapter;

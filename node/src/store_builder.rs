@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use graph::{
     blockchain::ChainIdentifier,
@@ -79,9 +79,5 @@ impl StoreBuilder {
         );
 
         Arc::new(DieselStore::new(block_store))
-    }
-
-    pub fn primary_pool(&self) -> ConnectionPool {
-        self.pool.clone()
     }
 }

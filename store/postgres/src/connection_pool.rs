@@ -8,23 +8,20 @@ use diesel::{sql_query, RunQueryDsl};
 use graph::{
     constraint_violation,
     prelude::{
-        anyhow::{self, anyhow, bail},
-        crit, debug, error, info, o, tokio,
+        anyhow::{self},
+        error, info, o, tokio,
         tokio::sync::Semaphore,
-        tokio::time::Instant,
         CancelGuard, CancelHandle, CancelToken as _, CancelableError, Logger, StoreError,
     },
     util::timed_rw_lock::TimedMutex,
 };
 
+use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashMap, sync::RwLock};
-
-use postgres::config::{Config, Host};
 
 lazy_static::lazy_static! {
     // There is typically no need to configure this. But this can be used to effectivey disable the
@@ -316,13 +313,6 @@ impl ConnectionPool {
         .await
         // propagate panics
         .unwrap();
-    }
-
-    pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        let pool = match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool) | PoolState::Ready(pool) => pool.clone(),
-        };
-        pool.query_permit().await
     }
 }
 
@@ -666,11 +656,5 @@ impl PoolInner {
             .ok()
             .map(|conn| sql_query("select 1").execute(&conn).is_ok())
             .unwrap_or(false)
-    }
-
-    pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        let start = Instant::now();
-        let permit = self.query_semaphore.clone().acquire_owned().await;
-        permit.unwrap()
     }
 }

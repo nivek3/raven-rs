@@ -1,7 +1,7 @@
 use anyhow::Error;
 use futures03::Stream;
 
-use super::{Block, BlockPtr, Blockchain};
+use super::{BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
 use crate::prelude::*;
 

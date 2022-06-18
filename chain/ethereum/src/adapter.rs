@@ -1,15 +1,13 @@
 use anyhow::Error;
 use futures::Future;
 use graph::{
-    blockchain::{block_types::ChainIdentifier, IngestorError},
+    blockchain::{block_types::ChainIdentifier, BlockPtr, IngestorError},
     components::ethereum::{EthereumBlock, LightEthereumBlock},
     prelude::{
         async_trait,
         slog::Logger,
-        web3::{
-            self,
-            types::{Block, Log, H256},
-        },
+        web3::{self, types::H256},
+        BlockNumber,
     },
 };
 use std::{marker::Unpin, pin::Pin};
@@ -47,12 +45,6 @@ pub trait EthereumAdapterTrait: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
-
-    fn block_by_number(
-        &self,
-        logger: &Logger,
-        block_number: u64,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).

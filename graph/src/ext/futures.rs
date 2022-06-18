@@ -1,14 +1,16 @@
 use crate::prelude::tokio::macros::support::Poll;
 use crate::prelude::{Pin, StoreError};
-
 use futures03::channel::oneshot;
 use futures03::{future::Fuse, Future, FutureExt, Stream};
-
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::Context;
 use std::time::Duration;
 
+/// A cancelable stream or future.
+///
+/// Created by calling `cancelable` extension method.
+/// Can be canceled through the corresponding `CancelGuard`.
 pub struct Cancelable<T, C> {
     inner: T,
     cancel_receiver: Fuse<oneshot::Receiver<()>>,
@@ -35,6 +37,21 @@ impl<S: Stream + Unpin, C: Fn() -> S::Item + Unpin> Stream for Cancelable<S, C> 
     }
 }
 
+impl<F: Future + Unpin, C: Fn() -> F::Output + Unpin> Future for Cancelable<F, C> {
+    type Output = F::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Error if the future was canceled by dropping the sender.
+        // `canceled` is fused so we may ignore `Ok`s.
+        match self.cancel_receiver.poll_unpin(cx) {
+            Poll::Ready(Ok(_)) => unreachable!(),
+            Poll::Ready(Err(_)) => Poll::Ready((self.on_cancel)()),
+            Poll::Pending => Pin::new(&mut self.inner).poll(cx),
+        }
+    }
+}
+
+/// A `CancelGuard` or `SharedCancelGuard`.
 pub trait Canceler {
     /// Adds `cancel_sender` to the set being guarded.
     /// Avoid calling directly and prefer using `cancelable`.

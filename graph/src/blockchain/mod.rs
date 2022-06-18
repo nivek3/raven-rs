@@ -4,7 +4,7 @@ pub mod block_types;
 
 use crate::{components::store::BlockNumber, prelude::thiserror::Error};
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
 pub use block_types::{BlockHash, BlockPtr, ChainIdentifier};
 use slog::Logger;
@@ -27,41 +27,16 @@ pub trait Block: Send + Sync {
     fn parent_hash(&self) -> Option<BlockHash> {
         self.parent_ptr().map(|ptr| ptr.hash)
     }
+
+    /// The data that should be stored for this block in the `ChainStore`
+    fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
+        Ok(serde_json::Value::Null)
+    }
 }
-pub trait TriggerData {
-    /// If there is an error when processing this trigger, this will called to add relevant context.
-    /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
-    fn error_context(&self) -> String;
-}
-
-// pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone + Send + Sync {
-//     fn address(&self) -> Option<&[u8]>;
-//     fn start_block(&self) -> BlockNumber;
-//     fn name(&self) -> &str;
-//     fn kind(&self) -> &str;
-//     fn network(&self) -> Option<&str>;
-//     fn creation_block(&self) -> Option<BlockNumber>;
-//     fn runtime(&self) -> &[u8];
-// }
-
-// pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
-//     fn from_data_sources<'a>(
-//         data_sources: impl Iterator<Item = &'a C::DataSource> + Clone,
-//     ) -> Self {
-//         let mut this = Self::default();
-//         this.extend(data_sources);
-//         this
-//     }
-
-//     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a C::DataSource> + Clone);
-// }
 
 pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type Block: Block + Clone;
     // type DataSource: DataSource<Self>;
-
-    /// Trigger data as parsed from the triggers adapter.
-    // type TriggerData: TriggerData + Ord;
 
     /// Trigger filter used as input to the triggers adapter.
     // type TriggerFilter: TriggerFilter<Self>;
@@ -84,8 +59,8 @@ pub enum IngestorError {
     Unknown(anyhow::Error),
 }
 
-impl From<anyhow::Error> for IngestorError {
-    fn from(e: anyhow::Error) -> Self {
+impl From<Error> for IngestorError {
+    fn from(e: Error) -> Self {
         IngestorError::Unknown(e)
     }
 }
@@ -111,7 +86,7 @@ pub trait IngestorAdapter<C: Blockchain> {
     /// Get the latest block from the chain
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError>;
 
-    /// Retrieve all necessary data for the block  `hash` from the chain and
+    /// Retrieve all necessary data for the block `hash` from the chain and
     /// store it in the database
     async fn ingest_block(&self, hash: &BlockHash) -> Result<Option<BlockHash>, IngestorError>;
 

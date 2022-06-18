@@ -1,5 +1,5 @@
-use crate::blockchain::{Blockchain, IngestorAdapter, IngestorError};
-use crate::prelude::{anyhow::Error, info, trace, warn, Logger};
+use crate::blockchain::{BlockHash, Blockchain, IngestorAdapter, IngestorError};
+use crate::prelude::{anyhow, anyhow::Error, info, trace, warn, Logger};
 use std::{sync::Arc, time::Duration};
 
 pub struct BlockIngestor<C>
@@ -57,6 +57,8 @@ where
             }
 
             tokio::time::sleep(self.polling_interval).await;
+
+            break;
         }
     }
 
@@ -65,12 +67,10 @@ where
 
         // Get chain head ptr from store
         let head_block_ptr_opt = self.adapter.chain_head_ptr()?;
-
         // To check if there is a new block or not, fetch only the block header since that's cheaper
         // than the full block. This is worthwhile because most of the time there won't be a new
         // block, as we expect the poll interval to be much shorter than the block time.
         let latest_block = self.adapter.latest_block().await?;
-
         // If latest block matches head block in store, nothing needs to be done
         if Some(&latest_block) == head_block_ptr_opt.as_ref() {
             return Ok(());
@@ -88,7 +88,8 @@ where
                 let latest_number = latest_block.number;
                 let head_number = head_block_ptr.number;
                 let distance = latest_number - head_number;
-                let blocks_needed = (distance).min(self.adapter.ancestor_count());
+                let blocks_needed = distance.clone();
+                // let blocks_needed = (distance).min(self.adapter.ancestor_count());
 
                 if distance > 0 {
                     info!(
@@ -104,32 +105,11 @@ where
             }
         }
 
-        // Store latest block in block store.
-        // Might be a no-op if latest block is one that we have seen.
-        // ingest_blocks will return a (potentially incomplete) list of blocks that are
-        // missing.
         let mut missing_block_hash = self.adapter.ingest_block(&latest_block.hash).await?;
 
-        // Repeatedly fetch missing parent blocks, and ingest them.
-        // ingest_blocks will continue to tell us about more missing parent
-        // blocks until we have filled in all missing pieces of the
-        // blockchain in the block number range we care about.
-        //
-        // Loop will terminate because:
-        // - The number of blocks in the ChainStore in the block number
-        //   range [latest - ancestor_count, latest] is finite.
-        // - The missing parents in the first iteration have at most block
-        //   number latest-1.
-        // - Each iteration loads parents of all blocks in the range whose
-        //   parent blocks are not already in the ChainStore, so blocks
-        //   with missing parents in one iteration will not have missing
-        //   parents in the next.
-        // - Therefore, if the missing parents in one iteration have at
-        //   most block number N, then the missing parents in the next
-        //   iteration will have at most block number N-1.
-        // - Therefore, the loop will iterate at most ancestor_count times.
         while let Some(hash) = missing_block_hash {
             missing_block_hash = self.adapter.ingest_block(&hash).await?;
+            println!("Missing block hash: {:?}", hash);
         }
         Ok(())
     }

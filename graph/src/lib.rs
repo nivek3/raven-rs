@@ -6,9 +6,11 @@ pub mod log;
 pub mod ext;
 mod task_spawn;
 pub mod util;
+
 pub use task_spawn::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
+pub use tokio_stream;
 
 /// A prelude that makes all system component traits and data types available.
 ///

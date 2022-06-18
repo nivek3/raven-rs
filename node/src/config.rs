@@ -1,14 +1,9 @@
 use graph::prelude::{
-    anyhow::{anyhow, bail, Context, Result},
+    anyhow::{anyhow, bail, Result},
     info,
-    serde::{
-        de::{self, value, SeqAccess, Visitor},
-        Deserialize, Deserializer, Serialize,
-    },
-    serde_json, Logger, StoreError,
+    serde::{Deserialize, Serialize},
+    Logger,
 };
-use std::fs::read_to_string;
-// use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 pub struct Opt {
     pub postgres_url: Option<String>,
@@ -108,21 +103,6 @@ impl PoolSize {
             Ok(())
         }
     }
-
-    pub fn size_for(&self, node: &str, name: &str) -> Result<u32> {
-        use PoolSize::*;
-        match self {
-            None => unreachable!("validation ensures we have a pool size"),
-            Fixed(s) => Ok(*s),
-            Rule(rules) => rules
-                .iter()
-                .find(|rule| rule.matches(node))
-                .map(|rule| rule.size)
-                .ok_or_else(|| {
-                    anyhow!("no rule matches `{}` for the pool of shard {}", node, name)
-                }),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -137,16 +117,6 @@ pub struct Shard {
 }
 
 impl Shard {
-    fn validate(&mut self, name: &str) -> Result<()> {
-        self.connection = shellexpand::env(&self.connection)?.into_owned();
-
-        if matches!(self.pool_size, PoolSize::None) {
-            return Err(anyhow!("missing pool size definition for shard `{}`", name));
-        }
-        self.pool_size.validate(&self.connection)?;
-        Ok(())
-    }
-
     fn from_opt(opt: &Opt) -> Result<Self> {
         let postgres_url = opt
             .postgres_url
