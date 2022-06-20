@@ -89,55 +89,6 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn missing_parent(
-            &self,
-            conn: &PgConnection,
-            chain: &str,
-            first_block: i64,
-            hash: H256,
-            genesis: H256,
-        ) -> Result<Option<H256>, Error> {
-            let missing_parent_sql: &str = "
-            with recursive chain(hash, parent_hash, last) as (
-                -- base case: look at the head candidate block
-                select b.hash, b.parent_hash, false
-                  from ethereum_blocks b
-                 where b.network_name = $1
-                   and b.hash = $2
-                   and b.hash != $3
-                union all
-                -- recursion step: add a block whose hash is the latest parent_hash
-                -- on chain
-                select chain.parent_hash,
-                       b.parent_hash,
-                       coalesce(b.parent_hash is null
-                             or b.number <= $4
-                             or b.hash = $3, true)
-                  from chain left outer join ethereum_blocks b
-                              on chain.parent_hash = b.hash
-                             and b.network_name = $1
-                 where not chain.last)
-             select hash
-               from chain
-              where chain.parent_hash is null;
-            ";
-            let hash = format!("{:x}", hash);
-            let genesis = format!("{:x}", genesis);
-            let missing = sql_query(missing_parent_sql)
-                .bind::<Text, _>(chain)
-                .bind::<Text, _>(&hash)
-                .bind::<Text, _>(&genesis)
-                .bind::<BigInt, _>(first_block)
-                .load::<BlockHashText>(conn)?;
-
-            let missing = match missing.len() {
-                0 => None,
-                1 => Some(missing[0].hash.parse()?),
-                _ => unreachable!("the query can only return no or one row"),
-            };
-            Ok(missing)
-        }
-
         pub(super) fn chain_head_candidate(
             &self,
             conn: &PgConnection,
@@ -212,7 +163,7 @@ impl ChainStore {
         unimplemented!()
     }
 
-    pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
+    pub fn chain_head_block(&self, _chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         unimplemented!()
     }
 
@@ -254,21 +205,18 @@ impl ChainStoreTrait for ChainStore {
         unimplemented!();
     }
 
-    async fn attempt_chain_head_update(
-        self: Arc<Self>,
-        _ancestor_count: BlockNumber,
-    ) -> Result<Option<H256>, Error> {
+    async fn attempt_chain_head_update(self: Arc<Self>) -> Result<Option<BlockNumber>, Error> {
         use crate::models::block::ethereum_networks as n;
 
         let chain_store = self.clone();
-        let missing: Option<H256> = self
+        let missing: Option<BlockNumber> = self
             .pool
             .with_conn(move |conn, _| {
                 let candidate = chain_store
                     .storage
                     .chain_head_candidate(&conn, &chain_store.chain)
                     .map_err(CancelableError::from)?;
-
+                // TODO the candidate always is none
                 let ptr = match &candidate {
                     None => return Ok(None),
                     Some(ptr) => ptr,
@@ -277,7 +225,7 @@ impl ChainStoreTrait for ChainStore {
                 let hash = ptr.hash_hex();
                 let number = ptr.number as i64;
 
-                conn.transaction(|| -> Result<Option<H256>, StoreError> {
+                conn.transaction(|| -> Result<Option<BlockNumber>, StoreError> {
                     diesel::update(n::table.filter(n::name.eq(&chain_store.chain)))
                         .set((
                             n::head_block_hash.eq(&hash),
@@ -293,15 +241,16 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        use crate::models::block::ethereum_blocks::dsl::*;
-        let row = ethereum_blocks
-            .select((hash, number))
-            .filter(network_name.eq(self.chain.clone()))
-            .first::<(String, i64)>(&self.get_conn()?)
+        use crate::models::block::ethereum_networks::dsl::*;
+        let row = ethereum_networks
+            .select((head_block_hash, head_block_number))
+            .filter(name.eq(self.chain.clone()))
+            .first::<(Option<String>, Option<i64>)>(&self.get_conn()?)
             .optional()
             .map_err(Error::from)?;
-        row.map(|(block_hash, block_number)| {
-            BlockPtr::try_from((block_hash.as_str(), block_number))
+        row.map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
+            (Some(hash), Some(number)) => BlockPtr::try_from((hash.as_str(), number)),
+            _ => unreachable!(),
         })
         .transpose()
     }

@@ -101,7 +101,7 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
     async fn ingest_block(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<BlockHash>, IngestorError> {
+    ) -> Result<Option<BlockNumber>, IngestorError> {
         let block_hash = H256::from_slice(block_hash.as_slice());
 
         let block = self
@@ -124,7 +124,7 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
 
         self.chain_store
             .clone()
-            .attempt_chain_head_update(self.ancestor_count)
+            .attempt_chain_head_update()
             .await
             .map(|missing| missing.map(|h256| h256.into()))
             .map_err(|e| {
@@ -135,6 +135,16 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
 
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, anyhow::Error> {
         self.chain_store.chain_head_ptr()
+    }
+
+    async fn chain_block_ptr(&self, block_number: BlockNumber) -> Result<BlockPtr, IngestorError> {
+        let opt = self
+            .eth_adapter
+            .block_head_by_number(&self.logger, block_number)
+            .compat()
+            .await;
+
+        opt.map(|block| block.into())
     }
 }
 

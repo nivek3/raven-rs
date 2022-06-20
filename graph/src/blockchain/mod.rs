@@ -4,7 +4,7 @@ pub mod block_types;
 
 use crate::{components::store::BlockNumber, prelude::thiserror::Error};
 
-use anyhow::{anyhow, Context, Error};
+use anyhow::Error;
 use async_trait::async_trait;
 pub use block_types::{BlockHash, BlockPtr, ChainIdentifier};
 use slog::Logger;
@@ -87,10 +87,12 @@ pub trait IngestorAdapter<C: Blockchain> {
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError>;
 
     /// Retrieve all necessary data for the block `hash` from the chain and
-    /// store it in the database
-    async fn ingest_block(&self, hash: &BlockHash) -> Result<Option<BlockHash>, IngestorError>;
+    /// store it in the database, return the next block number to ingest.
+    async fn ingest_block(&self, hash: &BlockHash) -> Result<Option<BlockNumber>, IngestorError>;
 
     /// Return the chain head that is stored locally, and therefore visible
     /// to the block streams of subgraphs
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, anyhow::Error>;
+
+    async fn chain_block_ptr(&self, block_number: BlockNumber) -> Result<BlockPtr, IngestorError>;
 }

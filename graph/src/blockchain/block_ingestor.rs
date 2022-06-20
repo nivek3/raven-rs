@@ -1,4 +1,5 @@
 use crate::blockchain::{BlockHash, Blockchain, IngestorAdapter, IngestorError};
+use crate::prelude::BlockPtr;
 use crate::prelude::{anyhow, anyhow::Error, info, trace, warn, Logger};
 use std::{sync::Arc, time::Duration};
 
@@ -77,7 +78,7 @@ where
         }
 
         // Compare latest block with head ptr, alert user if far behind
-        match head_block_ptr_opt {
+        match head_block_ptr_opt.clone() {
             None => {
                 info!(
                     self.logger,
@@ -105,11 +106,20 @@ where
             }
         }
 
-        let mut missing_block_hash = self.adapter.ingest_block(&latest_block.hash).await?;
+        let start_block_ptr: BlockPtr = if let Some(head_block_ptr) = head_block_ptr_opt {
+            head_block_ptr
+        } else {
+            self.adapter.chain_block_ptr(0).await?
+        };
 
-        while let Some(hash) = missing_block_hash {
-            missing_block_hash = self.adapter.ingest_block(&hash).await?;
-            println!("Missing block hash: {:?}", hash);
+        self.adapter.ingest_block(&start_block_ptr.hash).await?;
+        let mut missing_block_number = start_block_ptr.block_number() + 1;
+
+        while missing_block_number <= latest_block.number {
+            let missing_block_ptr = self.adapter.chain_block_ptr(missing_block_number).await?;
+            self.adapter.ingest_block(&missing_block_ptr.hash).await?;
+            missing_block_number = missing_block_ptr.block_number() + 1;
+            println!("Missing block number: {:?}", missing_block_number);
         }
         Ok(())
     }

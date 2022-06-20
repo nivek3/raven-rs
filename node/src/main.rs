@@ -48,7 +48,6 @@ async fn main() {
 
     // let network_name = "mainnet".to_string();
     let block_polling_interval = Duration::from_millis(10);
-    println!("config : {:?}", config);
     let store_builder = StoreBuilder::new(&logger, &config).await;
 
     let ethereum_networks = create_ethereum_networks(logger.clone(), config.clone())

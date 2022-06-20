@@ -47,6 +47,20 @@ pub trait EthereumAdapterTrait: Send + Sync + 'static {
         block_hash: H256,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
 
+    /// Find a block by its number.
+    fn block_by_number(
+        &self,
+        logger: &Logger,
+        block_number: BlockNumber,
+    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
+
+    /// Get the block ptr by number
+    fn block_head_by_number(
+        &self,
+        logger: &Logger,
+        block_number: BlockNumber,
+    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = IngestorError> + Send>;
+
     /// Load full information for the specified `block` (in particular, transaction receipts).
     fn load_full_block(
         &self,

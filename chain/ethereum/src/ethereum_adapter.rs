@@ -6,7 +6,7 @@ use graph::{
     prelude::{
         anyhow::anyhow,
         async_trait,
-        futures03::{self, compat::Future01CompatExt, FutureExt},
+        futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt},
         info, retry,
         slog::Logger,
         tokio::try_join,
@@ -19,7 +19,6 @@ use graph::{
         BlockNumber, Error, TryFutureExt,
     },
 };
-use jsonrpc_core::futures::StreamExt;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -173,6 +172,82 @@ impl EthereumAdapterTrait for EthereumAdapter {
         )
     }
 
+    /// Find a block head by its number.
+    fn block_head_by_number(
+        &self,
+        logger: &Logger,
+        block_number: BlockNumber,
+    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = IngestorError> + Send> {
+        let web3 = self.web3.clone();
+        let logger = logger.clone();
+        let operation_name = format!("eth_getBlockByNumber({}) no txs RPC call", block_number);
+        Box::new(
+            retry(operation_name, &logger)
+                .no_limit()
+                .timeout_secs(10)
+                .run(move || {
+                    let web3 = web3.clone();
+                    async move {
+                        let block_opt = web3
+                            .eth()
+                            .block(BlockId::Number(block_number.into()))
+                            .await
+                            .map_err(|e| {
+                                anyhow!("could not get block {} from Ethereum: {}", block_number, e)
+                            })?;
+
+                        block_opt
+                            .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+                    }
+                })
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        anyhow!(
+                            "Ethereum node took too long to return block {}",
+                            block_number
+                        )
+                        .into()
+                    })
+                })
+                .boxed()
+                .compat(),
+        )
+    }
+
+    /// Find a block by its number.
+    fn block_by_number(
+        &self,
+        logger: &Logger,
+        block_number: BlockNumber,
+    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
+        let web3 = self.web3.clone();
+        let logger = logger.clone();
+        Box::new(
+            retry("eth_getBlockByNumber RPC call", &logger)
+                .no_limit()
+                .timeout_secs(10)
+                .run(move || {
+                    Box::pin(
+                        web3.eth()
+                            .block_with_txs(BlockId::Number(block_number.into())),
+                    )
+                    .compat()
+                    .from_err()
+                    .compat()
+                })
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        anyhow!(
+                            "Ethereum node took too long to return block {}",
+                            block_number
+                        )
+                    })
+                })
+                .boxed()
+                .compat(),
+        )
+    }
+
     /// Find a block by its hash.
     fn block_by_hash(
         &self,
@@ -227,7 +302,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let hash_stream = graph::tokio_stream::iter(hashes);
         let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
-            println!("tx_hash: {:?}", tx_hash);
             fetch_transaction_receipt_with_retry(web3.clone(), tx_hash, block_hash, logger.clone())
         })
         .buffered(1000);

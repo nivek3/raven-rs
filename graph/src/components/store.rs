@@ -27,10 +27,7 @@ pub trait ChainStore: Send + Sync + 'static {
     /// Upsert a block into the store (or update if they are already present).
     fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
 
-    async fn attempt_chain_head_update(
-        self: Arc<Self>,
-        ancestor_count: BlockNumber,
-    ) -> Result<Option<H256>, Error>;
+    async fn attempt_chain_head_update(self: Arc<Self>) -> Result<Option<BlockNumber>, Error>;
 
     /// Get the current head block pointer for this chain.
     /// Any changes to the head block pointer will be to a block with a larger block number, never
