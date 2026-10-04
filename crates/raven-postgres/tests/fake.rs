@@ -96,7 +96,7 @@ impl Database {
     pub async fn count(&self, table: &str) -> i64 {
         assert!(["test_entity", "blocks", "networks", "counter"].contains(&table));
         sqlx::query_scalar(AssertSqlSafe(format!(
-            "SELECT count(*) FROM \"{}\".{table}",
+            r#"SELECT count(*) FROM "{}".{table}"#,
             self.schema
         )))
         .fetch_one(&self.pool)
@@ -107,7 +107,7 @@ impl Database {
     pub async fn cleanup(self) {
         assert!(self.schema.starts_with("raven_test_"));
         sqlx::query(AssertSqlSafe(format!(
-            "DROP SCHEMA \"{}\" CASCADE",
+            r#"DROP SCHEMA "{}" CASCADE"#,
             self.schema
         )))
         .execute(&self.pool)

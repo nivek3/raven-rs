@@ -100,7 +100,7 @@ async fn read_snapshot(pool: &PgPool, schema: &str) -> Transaction<'static, Post
         .await
         .unwrap();
     sqlx::query("SELECT set_config('search_path', $1, true)")
-        .bind(format!("\"{schema}\", pg_catalog"))
+        .bind(format!(r#""{schema}", pg_catalog"#))
         .execute(&mut *tx)
         .await
         .unwrap();

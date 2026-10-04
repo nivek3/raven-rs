@@ -37,7 +37,7 @@ impl Database {
 
     /// Lists current fixture entities with their canonical update hashes.
     async fn entities(&self) -> Vec<(String, String, Value, Value)> {
-        sqlx::query(AssertSqlSafe(format!("SELECT e.entity_type, e.entity_id, e.data, b.hash AS updated_block_hash FROM \"{}\".test_entity e JOIN \"{}\".blocks b ON b.number = e.start_block AND b.status = 1 WHERE e.end_block IS NULL ORDER BY e.entity_type, e.entity_id", self.schema, self.schema)))
+        sqlx::query(AssertSqlSafe(format!(r#"SELECT e.entity_type, e.entity_id, e.data, b.hash AS updated_block_hash FROM "{}".test_entity e JOIN "{}".blocks b ON b.number = e.start_block AND b.status = 1 WHERE e.end_block IS NULL ORDER BY e.entity_type, e.entity_id"#, self.schema, self.schema)))
             .fetch_all(&self.pool).await.unwrap().into_iter().map(|r| (
                 r.get("entity_type"), r.get("entity_id"), r.get::<Json<Value>, _>("data").0, r.get::<Json<Value>, _>("updated_block_hash").0,
             )).collect()
@@ -62,7 +62,7 @@ async fn rejects_invalid_schema_before_connecting() {
         "pg_catalog",
         "has-dash",
         "UPPER",
-        "a\"; DROP SCHEMA public",
+        r#"a"; DROP SCHEMA public"#,
         "1bad",
     ] {
         assert!(
@@ -177,7 +177,7 @@ async fn revert_restores_full_images_and_same_hash_can_be_replayed() {
             .await
             .unwrap();
         let versions: Vec<(String, sqlx::types::Json<Value>)> = sqlx::query_as(AssertSqlSafe(format!(
-            "SELECT entity_id, data FROM \"{}\".test_entity WHERE start_block = 11 ORDER BY entity_id", db.schema,
+            r#"SELECT entity_id, data FROM "{}".test_entity WHERE start_block = 11 ORDER BY entity_id"#, db.schema,
         ))).fetch_all(&db.pool).await.unwrap();
         assert_eq!(
             versions,
@@ -187,7 +187,7 @@ async fn revert_restores_full_images_and_same_hash_can_be_replayed() {
             ]
         );
         let status: i16 = sqlx::query_scalar(AssertSqlSafe(format!(
-            "SELECT status FROM \"{}\".blocks WHERE hash = $1",
+            r#"SELECT status FROM "{}".blocks WHERE hash = $1"#,
             db.schema
         )))
         .bind(sqlx::types::Json(&b11.hash))
@@ -212,7 +212,7 @@ async fn revert_restores_full_images_and_same_hash_can_be_replayed() {
         assert!(store.revert_block(&b10).await.is_err());
         store.revert_block(&b11).await.unwrap();
         let status: i16 = sqlx::query_scalar(AssertSqlSafe(format!(
-            "SELECT status FROM \"{}\".blocks WHERE hash = $1",
+            r#"SELECT status FROM "{}".blocks WHERE hash = $1"#,
             db.schema
         )))
         .bind(sqlx::types::Json(&b11.hash))
@@ -331,7 +331,7 @@ async fn cancelled_block_submission_rolls_back_internal_transaction() {
     store.initialize(&network()).await.unwrap();
     let mut blocker = db.pool.begin().await.unwrap();
     sqlx::query(AssertSqlSafe(format!(
-        "LOCK TABLE \"{}\".test_entity IN ACCESS EXCLUSIVE MODE",
+        r#"LOCK TABLE "{}".test_entity IN ACCESS EXCLUSIVE MODE"#,
         db.schema
     )))
     .execute(&mut *blocker)
@@ -363,7 +363,7 @@ async fn sql_failure_cannot_publish_partial_block_state() {
     let store = db.open().await;
     store.initialize(&network()).await.unwrap();
     sqlx::query(AssertSqlSafe(format!(
-        "ALTER TABLE \"{}\".test_entity ALTER COLUMN entity_id TYPE VARCHAR(5)",
+        r#"ALTER TABLE "{}".test_entity ALTER COLUMN entity_id TYPE VARCHAR(5)"#,
         db.schema
     )))
     .execute(&db.pool)

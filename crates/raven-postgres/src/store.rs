@@ -92,7 +92,7 @@ impl<H, I> PostgresChainStore<H, I> {
             .map_err(database)?;
         // Schema is validated as a plain identifier; quote it for reserved words.
         sqlx::query(AssertSqlSafe(format!(
-            "CREATE SCHEMA IF NOT EXISTS \"{schema}\""
+            r#"CREATE SCHEMA IF NOT EXISTS "{schema}""#
         )))
         .execute(&mut *tx)
         .await
@@ -162,7 +162,7 @@ pub(crate) fn validate_schema(schema: &str) -> RavenResult<()> {
 pub(crate) async fn set_schema(conn: &mut PgConnection, schema: &str) -> RavenResult<()> {
     // LOCAL prevents the schema from leaking beyond the current transaction.
     sqlx::query("SELECT set_config('search_path', $1, true)")
-        .bind(format!("\"{schema}\", pg_catalog"))
+        .bind(format!(r#""{schema}", pg_catalog"#))
         .execute(conn)
         .await
         .map_err(database)?;

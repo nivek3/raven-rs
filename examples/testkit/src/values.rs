@@ -166,7 +166,7 @@ mod tests {
             serde_json::json!("18")
         );
         let values: Value =
-            serde_json::from_str("[\"340282366920938463463374607431768211455\",-120,18,true]")
+            serde_json::from_str(r#"["340282366920938463463374607431768211455",-120,18,true]"#)
                 .unwrap();
         assert_eq!(
             call_values(values).unwrap(),
@@ -199,11 +199,11 @@ mod tests {
     /// Verifies equivalent SQL decimal scales normalize to equal JSON.
     fn equivalent_sql_scales_compare_without_floating_point() {
         let mut left: Value = serde_json::from_str(
-            "{\"amount\":123456789012345678901234567890.000,\"value\":\"1.00\"}",
+            r#"{"amount":123456789012345678901234567890.000,"value":"1.00"}"#,
         )
         .unwrap();
         let mut right: Value =
-            serde_json::from_str("{\"amount\":1.2345678901234567890123456789e29,\"value\":\"1\"}")
+            serde_json::from_str(r#"{"amount":1.2345678901234567890123456789e29,"value":"1"}"#)
                 .unwrap();
         normalize_decimal_fields(&mut left);
         normalize_decimal_fields(&mut right);

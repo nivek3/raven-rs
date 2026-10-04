@@ -661,7 +661,7 @@ impl Testkit {
             } else {
                 "to_jsonb(t) - 'vid' - 'block_range'"
             };
-            let output = self.sql(&format!("SELECT COALESCE(jsonb_agg({fields} ORDER BY id), '[]'::jsonb) FROM {schema}.\"{table}\" t WHERE {predicate};"))?;
+            let output = self.sql(&format!(r#"SELECT COALESCE(jsonb_agg({fields} ORDER BY id), '[]'::jsonb) FROM {schema}."{table}" t WHERE {predicate};"#))?;
             let mut values = serde_json::from_str(&output)?;
             normalize_json_numbers(&mut values);
             result.insert(table.into(), values);
@@ -793,7 +793,7 @@ impl Testkit {
             } else {
                 "id, block_range"
             };
-            let output = self.sql(&format!("SELECT COALESCE(jsonb_agg(to_jsonb(t) - 'vid' ORDER BY {ordering}), '[]'::jsonb) FROM {schema}.\"{table}\" t;"))?;
+            let output = self.sql(&format!(r#"SELECT COALESCE(jsonb_agg(to_jsonb(t) - 'vid' ORDER BY {ordering}), '[]'::jsonb) FROM {schema}."{table}" t;"#))?;
             let mut values = serde_json::from_str(&output)?;
             normalize_json_numbers(&mut values);
             result.insert(table.into(), values);

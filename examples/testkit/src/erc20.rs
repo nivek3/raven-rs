@@ -77,12 +77,12 @@ impl Testkit {
                 &[
                     ("emitter", "emitter"),
                     ("contract", "contract"),
-                    ("from", "\"from\""),
-                    ("to", "\"to\""),
+                    ("from", r#""from""#),
+                    ("to", r#""to""#),
                 ],
                 &[
                     ("id", "id"),
-                    ("transaction", "\"transaction\""),
+                    ("transaction", r#""transaction""#),
                     ("timestamp", "timestamp::text"),
                     ("fromBalance", "from_balance"),
                     ("toBalance", "to_balance"),
@@ -117,8 +117,7 @@ impl Testkit {
                 format!("block_range @> {number}::bigint")
             };
             let values: Vec<Value> = serde_json::from_str(&self.sql(&format!(
-                "SELECT COALESCE(jsonb_agg(jsonb_build_object({arguments}) ORDER BY id), '[]'::jsonb) \
-                 FROM {schema}.\"{table}\" WHERE {condition};"
+                r#"SELECT COALESCE(jsonb_agg(jsonb_build_object({arguments}) ORDER BY id), '[]'::jsonb) FROM {schema}."{table}" WHERE {condition};"#
             ))?)?;
             for value in values {
                 let id = text(
@@ -148,8 +147,7 @@ impl Testkit {
                 "block_number"
             };
             let mut rows: Value = serde_json::from_str(&self.sql(&format!(
-                "SELECT COALESCE(jsonb_agg(to_jsonb(t) - 'vid' ORDER BY id, \"{version}\"), '[]'::jsonb) \
-                 FROM {schema}.\"{table}\" t;"
+                r#"SELECT COALESCE(jsonb_agg(to_jsonb(t) - 'vid' ORDER BY id, "{version}"), '[]'::jsonb) FROM {schema}."{table}" t;"#
             ))?)?;
             normalize_decimal_fields(&mut rows);
             result.insert(table.to_owned(), rows);
@@ -169,9 +167,7 @@ impl Testkit {
         for table in tables {
             require(
                 self.sql(&format!(
-                    "SELECT count(*) FROM {schema}.\"{table}\" t CROSS JOIN LATERAL \
-                     jsonb_each_text(to_jsonb(t)) field WHERE field.value ~ '^0x[0-9a-fA-F]+(:[0-9]+)?$' \
-                     AND field.value <> lower(field.value);"
+                    r#"SELECT count(*) FROM {schema}."{table}" t CROSS JOIN LATERAL jsonb_each_text(to_jsonb(t)) field WHERE field.value ~ '^0x[0-9a-fA-F]+(:[0-9]+)?$' AND field.value <> lower(field.value);"#
                 ))? == "0",
                 &format!("{table} contains mixed-case hexadecimal data"),
             )?;
@@ -681,7 +677,7 @@ impl Testkit {
         .to_lowercase();
         require(
             self.sql(&format!(
-                "SELECT count(*) FROM {schema}.\"transaction\" WHERE id = '{orphan_tx}';"
+                r#"SELECT count(*) FROM {schema}."transaction" WHERE id = '{orphan_tx}';"#
             ))? == "0",
             "branch A transaction remains",
         )?;
