@@ -1,0 +1,32 @@
+[package]
+name = "raven-example-erc20"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+autotests = false
+
+[dependencies]
+# Local workspace crates. This lets us reference them in other crates without specifying a path.
+raven-engine.workspace = true
+raven-evm.workspace = true
+raven-postgres.workspace = true
+rpc-log-crawler-datasource.workspace = true
+
+# External crates.
+alloy-primitives.workspace = true
+alloy-provider.workspace = true
+alloy-rpc-types-eth.workspace = true
+alloy-sol-types.workspace = true
+async-trait.workspace = true
+bigdecimal = { workspace = true }
+clap.workspace = true
+dotenv.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "signal", "time"] }
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+alloy-transport.workspace = true

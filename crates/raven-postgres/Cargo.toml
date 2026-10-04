@@ -1,0 +1,25 @@
+[package]
+name = "raven-postgres"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+autotests = false
+
+[dependencies]
+raven-engine.workspace = true
+sqlx.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[[test]]
+name = "store"
+path = "tests/store.rs"
+
+[[test]]
+name = "sql"
+path = "tests/sql.rs"

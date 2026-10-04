@@ -1,0 +1,22 @@
+{
+  "source": "npm registry packages published by Uniswap",
+  "artifacts": {
+    "core/UniswapV3Factory.json": "599479f60ebb056804aff7b2d05bdd0830ddbb1fdfaa0b6c62c02294ca7188b0",
+    "periphery/NFTDescriptor.json": "fbea8e331a38c954ae3ae016f06d3dcdcd747e63dd9e494096899b008ce2ab33",
+    "periphery/NonfungiblePositionManager.json": "bb4f9f1ca393293831e73db52c5425cc336b49dbda2cd9cd2708c4c885221675",
+    "periphery/NonfungibleTokenPositionDescriptor.json": "8f95d18a9ba03723534d5683d79672c5970433821b4b0e2795a55e217bf51a86",
+    "periphery/SwapRouter.json": "c3eb42a951dbe00277660ba47304ed41cf1bde67e98b8a952f7f22c917d6fb02"
+  },
+  "packages": {
+    "@uniswap/v3-core": {
+      "version": "1.0.1",
+      "tarball_sha1": "b6d2bdc6ba3c3fbd610bdc502395d86cd35264a0",
+      "tarball_sha256": "141b001e2a376fff867cb24e0713b2834095cb1250c13aae263d9a646446d329"
+    },
+    "@uniswap/v3-periphery": {
+      "version": "1.4.4",
+      "tarball_sha1": "d2756c23b69718173c5874f37fd4ad57d2f021b7",
+      "tarball_sha256": "7177174c4b8c66bd1d61e7c4127ee15e95f851edfb1a65ee8225b6ab4f818bd7"
+    }
+  }
+}

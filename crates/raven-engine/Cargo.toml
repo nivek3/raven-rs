@@ -1,0 +1,47 @@
+[package]
+name = "raven-engine"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+autotests = false
+
+[dependencies]
+tracing.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+
+[[test]]
+name = "engine"
+path = "tests/engine.rs"
+
+[[test]]
+name = "pipeline"
+path = "tests/pipeline.rs"
+
+[[test]]
+name = "sources"
+path = "tests/sources.rs"
+
+[[test]]
+name = "positions"
+path = "tests/positions.rs"
+
+[[test]]
+name = "errors"
+path = "tests/errors.rs"
+
+[[test]]
+name = "finality"
+path = "tests/finality.rs"
+
+
+[[test]]
+name = "entities"
+path = "tests/entities.rs"

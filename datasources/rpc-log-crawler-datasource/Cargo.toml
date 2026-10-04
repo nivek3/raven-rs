@@ -1,0 +1,35 @@
+[package]
+name = "rpc-log-crawler-datasource"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+autotests = false
+readme = "README.md"
+
+[dependencies]
+tracing.workspace = true
+raven-engine.workspace = true
+raven-evm.workspace = true
+rpc-block-crawler-datasource.workspace = true
+alloy-primitives.workspace = true
+alloy-rpc-types-eth = { workspace = true, features = ["serde"] }
+async-trait.workspace = true
+thiserror.workspace = true
+alloy-provider.workspace = true
+alloy-transport.workspace = true
+futures-util = "0.3.34"
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+tokio = { workspace = true, features = [
+    "macros",
+    "rt",
+    "time",
+    "net",
+    "io-util",
+] }
+
+[[test]]
+name = "crawler"
+path = "tests/crawler.rs"
