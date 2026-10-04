@@ -380,13 +380,12 @@ where
         .fetch_optional(&mut *tx)
         .await
         .map_err(database)?;
-        if let Some(row) = existing {
-            if header::<H>(&row)? != *next
+        if let Some(row) = existing
+            && (header::<H>(&row)? != *next
                 || row.try_get::<i16, _>("status").map_err(database)?
-                    != BlockStatus::Orphaned as i16
-            {
-                return Err(PostgresError::InvalidState.into());
-            }
+                    != BlockStatus::Orphaned as i16)
+        {
+            return Err(PostgresError::InvalidState.into());
         }
         sqlx::query("INSERT INTO blocks (number, hash, parent_hash, status) VALUES ($1::text::bigint, $2, $3, $4) ON CONFLICT (hash) DO UPDATE SET status = EXCLUDED.status")
             .bind(next.number.to_string()).bind(Json(&next.hash)).bind(Json(&next.parent_hash))

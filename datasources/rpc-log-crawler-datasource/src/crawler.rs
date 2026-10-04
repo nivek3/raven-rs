@@ -95,6 +95,16 @@ impl<T: Provider> RpcLogCrawler<T> {
         config: RpcLogCrawlerConfig,
         filter: EvmFilter,
     ) -> RavenResult<Self> {
+        if config.max_block_range == 0 {
+            return Err(
+                RpcLogError::InvalidConfig("max_block_range must be greater than zero").into(),
+            );
+        }
+        if config.block_concurrency == 0 {
+            return Err(
+                RpcLogError::InvalidConfig("block_concurrency must be greater than zero").into(),
+            );
+        }
         let provider = Arc::new(provider);
         let exact = RpcBlockCrawler::from_provider(Arc::clone(&provider), filter.clone())?;
         Ok(Self {

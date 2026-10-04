@@ -76,10 +76,8 @@ fn run(workflow: Command) -> Result<bool> {
     )?;
     if testkit.report["database_retained"] == true {
         println!("Configured test database: {}", testkit.database_name);
-        if rollback {
-            if let Some(schema) = testkit.report["schema"].as_str() {
-                println!("ERC20 schema: {schema}");
-            }
+        if rollback && let Some(schema) = testkit.report["schema"].as_str() {
+            println!("ERC20 schema: {schema}");
         }
     }
     println!("Testkit report and process logs: {}", report.display());

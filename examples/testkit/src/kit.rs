@@ -410,7 +410,7 @@ impl Testkit {
     /// Executes SQL against the scenario database.
     pub fn sql(&self, query: &str) -> Result<String> {
         self.command(
-            &vec![
+            &[
                 "psql".into(),
                 "--no-psqlrc".into(),
                 "--no-password".into(),
@@ -443,7 +443,7 @@ impl Testkit {
             )?;
         }
         let rustc = self.command(
-            &vec!["rustc".into(), "-vV".into()],
+            &["rustc".into(), "-vV".into()],
             None,
             Some("rustc-version.log"),
         )?;
@@ -490,7 +490,7 @@ impl Testkit {
             )?;
         }
         let rustc = self.command(
-            &vec!["rustc".into(), "-vV".into()],
+            &["rustc".into(), "-vV".into()],
             None,
             Some("rustc-version.log"),
         )?;
@@ -711,7 +711,7 @@ impl Testkit {
         }
         let topic = self
             .command(
-                &vec!["cast".into(), "keccak".into(), signature.into()],
+                &["cast".into(), "keccak".into(), signature.into()],
                 None,
                 Some("event-topic.log"),
             )?

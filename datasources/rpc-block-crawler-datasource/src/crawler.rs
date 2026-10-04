@@ -96,6 +96,9 @@ impl<T: Provider> RpcBlockCrawler<T> {
         config: RpcBlockCrawlerConfig,
         filter: EvmFilter,
     ) -> RavenResult<Self> {
+        if config.batch_size == 0 {
+            return Err(RpcError::InvalidConfig("batch_size must be greater than zero").into());
+        }
         Ok(Self {
             provider: Arc::new(provider),
             config,
@@ -138,10 +141,10 @@ impl<T: Provider> RpcBlockCrawler<T> {
             if batch.header.number != number || (number == end && batch.header != anchor) {
                 return Err(EngineError::InvalidBlock.into());
             }
-            if let Some(child) = batches.last() {
-                if !child.header.extends(&batch.header) {
-                    return Err(EngineError::InvalidBlock.into());
-                }
+            if let Some(child) = batches.last()
+                && !child.header.extends(&batch.header)
+            {
+                return Err(EngineError::InvalidBlock.into());
             }
             hash = batch.header.parent_hash;
             batches.push(batch);

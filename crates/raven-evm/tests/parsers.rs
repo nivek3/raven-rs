@@ -38,7 +38,7 @@ async fn other_kinds_addresses_and_signatures_do_not_match() {
     let parser = LogParser::<Changed>::new(address(5));
     assert!(
         parser
-            .parse(&Update::Block(BlockUpdate { block: block() }))
+            .parse(&Update::Block(Box::new(BlockUpdate { block: block() })))
             .await
             .unwrap()
             .is_none()
@@ -158,9 +158,9 @@ async fn anonymous_events_do_not_invent_a_signature_topic() {
 async fn block_parser_preserves_full_payload_and_has_no_log_metadata() {
     let block = block();
     let parsed = BlockParser
-        .parse(&Update::Block(BlockUpdate {
+        .parse(&Update::Block(Box::new(BlockUpdate {
             block: block.clone(),
-        }))
+        })))
         .await
         .unwrap()
         .unwrap();
@@ -195,9 +195,9 @@ async fn block_parser_wraps_the_payload_without_revalidating_transaction_bodies(
     let mut block = block();
     block.transactions.convert_to_hashes();
     let parsed = BlockParser
-        .parse(&Update::Block(BlockUpdate {
+        .parse(&Update::Block(Box::new(BlockUpdate {
             block: block.clone(),
-        }))
+        })))
         .await
         .unwrap()
         .unwrap();

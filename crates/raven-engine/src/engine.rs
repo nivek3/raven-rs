@@ -177,18 +177,18 @@ where
             .await?
             .ok_or(PositionError::MissingNetwork)?;
         let block_ptr = self.store.block_ptr().await?;
-        if let Some(block_ptr) = &block_ptr {
-            if batch.header.number <= block_ptr.number {
-                let local = self
-                    .store
-                    .block_header_by_number(batch.header.number)
-                    .await?;
-                return Ok(if local.as_ref() == Some(&batch.header) {
-                    IngestOutcome::Ignored
-                } else {
-                    IngestOutcome::Resync
-                });
-            }
+        if let Some(block_ptr) = &block_ptr
+            && batch.header.number <= block_ptr.number
+        {
+            let local = self
+                .store
+                .block_header_by_number(batch.header.number)
+                .await?;
+            return Ok(if local.as_ref() == Some(&batch.header) {
+                IngestOutcome::Ignored
+            } else {
+                IngestOutcome::Resync
+            });
         }
         let head = self.source.head().await?;
         if !self.policy.permits(batch.header.number, head.number) {
@@ -259,20 +259,20 @@ where
                 }
                 break None;
             }
-            if let Some(local) = self.store.block_header_by_number(header.number).await? {
-                if local.hash == header.hash {
-                    if local != *header {
-                        return Err(EngineError::InvalidLocalHistory.into());
-                    }
-                    // A lower remote head on the same local branch may be a lagging
-                    // endpoint. Do not remove verified descendants on that evidence.
-                    if block_ptr.as_ref().is_some_and(|cp| cp.number > head.number)
-                        && header.number == head.number
-                    {
-                        return Err(EngineError::SourceBehind.into());
-                    }
-                    break Some(BlockPtr::from(header));
+            if let Some(local) = self.store.block_header_by_number(header.number).await?
+                && local.hash == header.hash
+            {
+                if local != *header {
+                    return Err(EngineError::InvalidLocalHistory.into());
                 }
+                // A lower remote head on the same local branch may be a lagging
+                // endpoint. Do not remove verified descendants on that evidence.
+                if block_ptr.as_ref().is_some_and(|cp| cp.number > head.number)
+                    && header.number == head.number
+                {
+                    return Err(EngineError::SourceBehind.into());
+                }
+                break Some(BlockPtr::from(header));
             }
             let current = remote.header.clone();
             // Walk the entire head branch to detect orphaned block pointers, even above

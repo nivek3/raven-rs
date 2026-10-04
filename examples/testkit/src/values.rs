@@ -49,7 +49,10 @@ pub(crate) fn hex_bigint(value: &str) -> Result<BigInt> {
 /// Decodes ABI event data into 32-byte integer words.
 pub(crate) fn log_words(data: &str) -> Result<Vec<BigInt>> {
     let data = data.trim_start_matches("0x");
-    require(data.len() % 64 == 0, "event data is not ABI word aligned")?;
+    require(
+        data.len().is_multiple_of(0),
+        "event data is not ABI word aligned",
+    )?;
     data.as_bytes()
         .chunks(64)
         .map(|word| BigInt::parse_bytes(word, 16).ok_or_else(|| "invalid ABI event word".into()))
@@ -143,10 +146,10 @@ pub(crate) fn normalize_decimal_fields(value: &mut Value) {
     match value {
         Value::Number(_) => normalize_json_numbers(value),
         Value::Object(values) => {
-            if let Some(Value::String(value)) = values.get_mut("value") {
-                if let Ok(decimal) = BigDecimal::from_str(value) {
-                    *value = decimal.normalized().to_string();
-                }
+            if let Some(Value::String(value)) = values.get_mut("value")
+                && let Ok(decimal) = BigDecimal::from_str(value)
+            {
+                *value = decimal.normalized().to_string();
             }
             values.values_mut().for_each(normalize_decimal_fields);
         }
@@ -198,10 +201,9 @@ mod tests {
     #[test]
     /// Verifies equivalent SQL decimal scales normalize to equal JSON.
     fn equivalent_sql_scales_compare_without_floating_point() {
-        let mut left: Value = serde_json::from_str(
-            r#"{"amount":123456789012345678901234567890.000,"value":"1.00"}"#,
-        )
-        .unwrap();
+        let mut left: Value =
+            serde_json::from_str(r#"{"amount":123456789012345678901234567890.000,"value":"1.00"}"#)
+                .unwrap();
         let mut right: Value =
             serde_json::from_str(r#"{"amount":1.2345678901234567890123456789e29,"value":"1"}"#)
                 .unwrap();

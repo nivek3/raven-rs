@@ -645,14 +645,16 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         .liquidity_event(
             &mut store,
             &event.parsed(()),
-            super::LiquidityKind::Mint,
-            address,
-            Some(address),
-            -1,
-            1,
-            "1".into(),
-            "3333333333333333333333333333333333".into(),
-            "0".into(),
+            super::LiquidityEventInput {
+                kind: super::LiquidityKind::Mint,
+                owner: address,
+                sender: Some(address),
+                lower: -1,
+                upper: 1,
+                amount: "1".into(),
+                raw0: "3333333333333333333333333333333333".into(),
+                raw1: "0".into(),
+            },
         )
         .await
         .unwrap();
@@ -666,14 +668,16 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         .liquidity_event(
             &mut store,
             &event.parsed(()),
-            super::LiquidityKind::Burn,
-            address,
-            None,
-            -1,
-            1,
-            "0".into(),
-            "100000000000000000000000000000000".into(),
-            "0".into(),
+            super::LiquidityEventInput {
+                kind: super::LiquidityKind::Burn,
+                owner: address,
+                sender: None,
+                lower: -1,
+                upper: 1,
+                amount: "0".into(),
+                raw0: "100000000000000000000000000000000".into(),
+                raw1: "0".into(),
+            },
         )
         .await
         .unwrap();

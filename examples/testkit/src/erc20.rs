@@ -11,6 +11,14 @@ use crate::{
 };
 
 type EntityKey = (String, String);
+type EntityField = (&'static str, &'static str);
+type RelationalEntity = (
+    &'static str,
+    &'static str,
+    bool,
+    &'static [EntityField],
+    &'static [EntityField],
+);
 
 /// Creates a missing-row error for an expected ERC20 record.
 fn missing(what: &str) -> std::io::Error {
@@ -39,7 +47,7 @@ impl Testkit {
         schema: &str,
         number: u64,
     ) -> Result<BTreeMap<EntityKey, Value>> {
-        let fields: [(&str, &str, bool, &[(&str, &str)], &[(&str, &str)]); 5] = [
+        let fields: [RelationalEntity; 5] = [
             (
                 "Account",
                 "account",
@@ -169,7 +177,7 @@ impl Testkit {
                 self.sql(&format!(
                     r#"SELECT count(*) FROM {schema}."{table}" t CROSS JOIN LATERAL jsonb_each_text(to_jsonb(t)) field WHERE field.value ~ '^0x[0-9a-fA-F]+(:[0-9]+)?$' AND field.value <> lower(field.value);"#
                 ))? == "0",
-                &format!("{table} contains mixed-case hexadecimal data"),
+                format!("{table} contains mixed-case hexadecimal data"),
             )?;
         }
         Ok(())

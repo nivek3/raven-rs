@@ -14,7 +14,7 @@ pub type BlockBatch = raven_engine::BlockBatch<B256, Update>;
 /// EVM data delivered within a block batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Update {
-    Block(BlockUpdate),
+    Block(Box<BlockUpdate>),
     Log(LogUpdate),
 }
 
@@ -102,7 +102,7 @@ pub fn build_block_batch(
     }
     let mut updates: Vec<Update> = Vec::new();
     if filter.blocks {
-        updates.push(Update::Block(BlockUpdate { block }));
+        updates.push(Update::Block(Box::new(BlockUpdate { block })));
     }
     // The map orders unique global log indices; transaction order must agree.
     let mut previous_transaction = 0;

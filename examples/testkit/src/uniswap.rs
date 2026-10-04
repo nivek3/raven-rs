@@ -201,7 +201,7 @@ impl Testkit {
         let owner = text(&self.call(
             &self.position_manager.clone(),
             "ownerOf(uint256)(address)",
-            &[first_position.clone()],
+            std::slice::from_ref(&first_position),
         )?)?
         .to_lowercase();
         require(
@@ -224,7 +224,7 @@ impl Testkit {
             "slot0()(uint160,int24,uint16,uint16,uint16,uint8,bool)",
             &[],
         )?;
-        let position = self.call(&self.position_manager.clone(), "positions(uint256)(uint96,address,address,address,uint24,int24,int24,uint128,uint256,uint256,uint128,uint128)", &[first_position.clone()])?;
+        let position = self.call(&self.position_manager.clone(), "positions(uint256)(uint96,address,address,address,uint24,int24,int24,uint128,uint256,uint256,uint128,uint128)", std::slice::from_ref(&first_position))?;
         require(
             name.is_string()
                 && decimals == 18
@@ -352,7 +352,7 @@ impl Testkit {
         for event in ["Mint", "Burn", "Swap"] {
             require(
                 rows.iter().filter(|row| row[0] == event).count() == expected[event],
-                &format!("stored {event} count differs from canonical receipt logs"),
+                format!("stored {event} count differs from canonical receipt logs"),
             )?;
         }
         let position_count = self

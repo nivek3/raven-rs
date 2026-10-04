@@ -196,4 +196,12 @@ async fn invalid_config_is_rejected() {
         RpcLogCrawler::from_provider_with_config(rpc.provider(), config, EvmFilter::default())
             .is_err()
     );
+    let config = RpcLogCrawlerConfig {
+        block_concurrency: 0,
+        ..RpcLogCrawlerConfig::default()
+    };
+    assert!(
+        RpcLogCrawler::from_provider_with_config(rpc.provider(), config, EvmFilter::default())
+            .is_err()
+    );
 }

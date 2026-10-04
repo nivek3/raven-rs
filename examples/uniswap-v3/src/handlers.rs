@@ -43,6 +43,17 @@ enum LiquidityKind {
     Burn,
 }
 
+struct LiquidityEventInput {
+    kind: LiquidityKind,
+    owner: Address,
+    sender: Option<Address>,
+    lower: i32,
+    upper: i32,
+    amount: String,
+    raw0: String,
+    raw1: String,
+}
+
 pub struct Mapping<P = RootProvider> {
     pub(crate) provider: Arc<P>,
     pub(crate) factory: String,
@@ -257,7 +268,7 @@ impl<P: Provider> Mapping<P> {
         }
         let bundle: Bundle = load(store, "1").await?;
         if self.chain.stable_coins.contains(&token.id) {
-            return Ok(if bundle.eth_price_usd == BigDecimal::from(0) {
+            return Ok(if bundle.eth_price_usd == 0 {
                 BigDecimal::from(0)
             } else {
                 round34(BigDecimal::from(1) / bundle.eth_price_usd)
@@ -269,7 +280,7 @@ impl<P: Provider> Mapping<P> {
             let Some(pool) = store.load::<Pool>(id).await? else {
                 continue;
             };
-            if pool.liquidity <= BigDecimal::from(0) {
+            if pool.liquidity <= 0 {
                 continue;
             }
             let (other_id, locked, pool_price) = if pool.token0 == token.id {
@@ -441,15 +452,18 @@ impl<P: Provider> Mapping<P> {
         &self,
         store: &mut dyn EntityStore,
         event: &Parsed<T>,
-        kind: LiquidityKind,
-        owner: Address,
-        sender: Option<Address>,
-        lower: i32,
-        upper: i32,
-        amount: String,
-        raw0: String,
-        raw1: String,
+        input: LiquidityEventInput,
     ) -> RavenResult<()> {
+        let LiquidityEventInput {
+            kind,
+            owner,
+            sender,
+            lower,
+            upper,
+            amount,
+            raw0,
+            raw1,
+        } = input;
         let id = event
             .address
             .ok_or(ExampleError::MissingMetadata)?
@@ -502,14 +516,15 @@ impl<P: Provider> Mapping<P> {
         pool.tx_count += BigDecimal::from(1);
         token0.tx_count += BigDecimal::from(1);
         token1.tx_count += BigDecimal::from(1);
-        if let Some(tick) = &pool.tick {
-            if tick >= &BigDecimal::from(lower) && tick < &BigDecimal::from(upper) {
-                pool.liquidity += if mint {
-                    integer(&amount)
-                } else {
-                    -integer(&amount)
-                };
-            }
+        if let Some(tick) = &pool.tick
+            && tick >= &BigDecimal::from(lower)
+            && tick < &BigDecimal::from(upper)
+        {
+            pool.liquidity += if mint {
+                integer(&amount)
+            } else {
+                -integer(&amount)
+            };
         }
         self.tvl(&mut pool, &token0, &token1, &mut factory, &bundle);
         self.transaction(store, &context).await?;
@@ -648,7 +663,7 @@ impl<P: Provider> Mapping<P> {
         let tracked = round34(
             self.tracked(abs0.clone(), &token0, abs1.clone(), &token1, &bundle) / decimal("2"),
         );
-        let eth = if bundle.eth_price_usd == BigDecimal::from(0) {
+        let eth = if bundle.eth_price_usd == 0 {
             BigDecimal::from(0)
         } else {
             round34(tracked.clone() / bundle.eth_price_usd.clone())
@@ -698,7 +713,7 @@ impl<P: Provider> Mapping<P> {
         let ratio = round34(ratio / q192);
         let ratio = round34(ratio * scale0);
         let ratio = round34(ratio / scale1);
-        pool.token0_price = if ratio == BigDecimal::from(0) {
+        pool.token0_price = if ratio == 0 {
             BigDecimal::from(0)
         } else {
             round34(BigDecimal::from(1) / ratio.clone())
@@ -842,14 +857,16 @@ impl<P: Provider> Handler<LogUpdate> for MappingHandler<P> {
                 .liquidity_event(
                     store,
                     &event,
-                    LiquidityKind::Mint,
-                    v.owner,
-                    Some(v.sender),
-                    v.tickLower.as_i32(),
-                    v.tickUpper.as_i32(),
-                    v.amount.to_string(),
-                    v.amount0.to_string(),
-                    v.amount1.to_string(),
+                    LiquidityEventInput {
+                        kind: LiquidityKind::Mint,
+                        owner: v.owner,
+                        sender: Some(v.sender),
+                        lower: v.tickLower.as_i32(),
+                        upper: v.tickUpper.as_i32(),
+                        amount: v.amount.to_string(),
+                        raw0: v.amount0.to_string(),
+                        raw1: v.amount1.to_string(),
+                    },
                 )
                 .await
         } else if signature == &Burn::SIGNATURE_HASH {
@@ -859,14 +876,16 @@ impl<P: Provider> Handler<LogUpdate> for MappingHandler<P> {
                 .liquidity_event(
                     store,
                     &event,
-                    LiquidityKind::Burn,
-                    v.owner,
-                    None,
-                    v.tickLower.as_i32(),
-                    v.tickUpper.as_i32(),
-                    v.amount.to_string(),
-                    v.amount0.to_string(),
-                    v.amount1.to_string(),
+                    LiquidityEventInput {
+                        kind: LiquidityKind::Burn,
+                        owner: v.owner,
+                        sender: None,
+                        lower: v.tickLower.as_i32(),
+                        upper: v.tickUpper.as_i32(),
+                        amount: v.amount.to_string(),
+                        raw0: v.amount0.to_string(),
+                        raw1: v.amount1.to_string(),
+                    },
                 )
                 .await
         } else {

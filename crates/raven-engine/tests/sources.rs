@@ -65,14 +65,8 @@ async fn hash_lookup_retains_orphans_after_same_height_branch_switch() {
 async fn cancellation_interrupts_a_full_channel_without_needing_receiver_progress() {
     use std::{
         future::Future,
-        sync::Arc,
-        task::{Context, Poll, Wake, Waker},
+        task::{Context, Poll, Waker},
     };
-    struct Noop;
-    impl Wake for Noop {
-        /// Intentionally ignores wake notifications for manual future polling.
-        fn wake(self: Arc<Self>) {}
-    }
 
     let source = FakeSource::new(1);
     source.set_chain(vec![block(100, 1000, 990, vec![])]);
@@ -81,8 +75,7 @@ async fn cancellation_interrupts_a_full_channel_without_needing_receiver_progres
     sender.try_send(sentinel.clone()).unwrap();
     let token = CancellationToken::new();
     let mut consume = Box::pin(source.consume(100, sender, token.clone()));
-    let waker = Waker::from(Arc::new(Noop));
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(Waker::noop());
     assert!(matches!(consume.as_mut().poll(&mut context), Poll::Pending));
     token.cancel();
     assert!(matches!(

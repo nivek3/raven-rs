@@ -27,7 +27,7 @@ pub fn power(base: &BigDecimal, exponent: i32) -> BigDecimal {
     match exponent.cmp(&0) {
         Ordering::Less => {
             let inverse = power(base, -exponent);
-            if inverse == BigDecimal::from(0) {
+            if inverse == 0 {
                 BigDecimal::from(0)
             } else {
                 round34(BigDecimal::from(1) / inverse)

@@ -52,12 +52,11 @@ impl UniswapSource {
             Update::Log(log) => Some(log),
             Update::Block(_) => None,
         }) {
-            if let Some(previous) = previous {
-                if previous.log_index == log.log_index
-                    || previous.transaction_index > log.transaction_index
-                {
-                    return Err(EvmError::LogPosition.into());
-                }
+            if let Some(previous) = previous
+                && (previous.log_index == log.log_index
+                    || previous.transaction_index > log.transaction_index)
+            {
+                return Err(EvmError::LogPosition.into());
             }
             previous = Some(log);
         }

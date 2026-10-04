@@ -123,14 +123,14 @@ impl<P: Provider> Mapping<P> {
             while index <= new {
                 self.update_tick(store, &pool.id, &index, event, context)
                     .await?;
-                index = index + spacing.clone();
+                index += spacing.clone();
             }
         } else if new < old {
             let mut index = &old - &modulo;
             while index >= new {
                 self.update_tick(store, &pool.id, &index, event, context)
                     .await?;
-                index = index - spacing.clone();
+                index -= spacing.clone();
             }
         }
         Ok(())

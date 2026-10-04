@@ -13,6 +13,14 @@ use crate::{
     math::{integer, round34, units},
 };
 
+struct PositionLiquidityInput {
+    token_id: U256,
+    liquidity: u128,
+    raw0: U256,
+    raw1: U256,
+    increase: bool,
+}
+
 impl<P: Provider> Mapping<P> {
     /// Loads the on-chain position and builds its current indexed representation.
     async fn position<T>(
@@ -129,12 +137,15 @@ impl<P: Provider> Mapping<P> {
         &self,
         store: &mut dyn EntityStore,
         event: &Parsed<T>,
-        token_id: U256,
-        liquidity: u128,
-        raw0: U256,
-        raw1: U256,
-        increase: bool,
+        input: PositionLiquidityInput,
     ) -> RavenResult<()> {
+        let PositionLiquidityInput {
+            token_id,
+            liquidity,
+            raw0,
+            raw1,
+            increase,
+        } = input;
         if event.block_number == 14_317_993 {
             return Ok(());
         }
@@ -244,11 +255,13 @@ impl<P: Provider> Mapping<P> {
             self.position_liquidity(
                 store,
                 &event,
-                value.tokenId,
-                value.liquidity,
-                value.amount0,
-                value.amount1,
-                true,
+                PositionLiquidityInput {
+                    token_id: value.tokenId,
+                    liquidity: value.liquidity,
+                    raw0: value.amount0,
+                    raw1: value.amount1,
+                    increase: true,
+                },
             )
             .await
         } else if signature == Some(&PositionManager::DecreaseLiquidity::SIGNATURE_HASH) {
@@ -257,11 +270,13 @@ impl<P: Provider> Mapping<P> {
             self.position_liquidity(
                 store,
                 &event,
-                value.tokenId,
-                value.liquidity,
-                value.amount0,
-                value.amount1,
-                false,
+                PositionLiquidityInput {
+                    token_id: value.tokenId,
+                    liquidity: value.liquidity,
+                    raw0: value.amount0,
+                    raw1: value.amount1,
+                    increase: false,
+                },
             )
             .await
         } else if signature == Some(&PositionManager::Collect::SIGNATURE_HASH) {

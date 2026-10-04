@@ -184,7 +184,7 @@ async fn polling_preserves_a_window_whose_log_request_is_slower_than_the_poll_in
         .filter(|c| c.method == "eth_getLogs")
         .count();
     assert!(
-        log_queries >= 1 && log_queries <= 2,
+        (1..=2).contains(&log_queries),
         "only the bounded source window should download logs"
     );
 }
