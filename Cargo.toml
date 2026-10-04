@@ -1,0 +1,74 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/raven-engine",
+    "crates/raven-evm",
+    "crates/raven-postgres",
+    "datasources/rpc-block-crawler-datasource",
+    "datasources/rpc-log-crawler-datasource",
+    "examples/erc20",
+    "examples/testkit",
+    "examples/uniswap-v3",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+# Local workspace crates. This lets us reference them in other crates without specifying a path.
+raven-engine = { path = "crates/raven-engine" }
+raven-evm = { path = "crates/raven-evm" }
+raven-postgres = { path = "crates/raven-postgres" }
+rpc-block-crawler-datasource = { path = "datasources/rpc-block-crawler-datasource" }
+rpc-log-crawler-datasource = { path = "datasources/rpc-log-crawler-datasource" }
+
+# External crates.
+alloy-consensus = { version = "2.4.1", default-features = false, features = [
+    "std",
+] }
+alloy-primitives = { version = "1.7.2", default-features = false, features = [
+    "std",
+] }
+alloy-provider = { version = "2.4.1", default-features = false, features = [
+    "reqwest",
+    "reqwest-rustls-tls",
+] }
+alloy-rpc-types-eth = { version = "2.4.1", default-features = false, features = [
+    "std",
+] }
+alloy-sol-types = { version = "1.7.2", default-features = false, features = [
+    "std",
+] }
+alloy-transport = { version = "2.4.1", default-features = false }
+async-trait = "0.1.92"
+bigdecimal = "0.4.11"
+clap = { version = "4", features = ["derive", "env"] }
+dotenv = { package = "dotenvy", version = "0.15" }
+libc = "0.2"
+num-traits = "0.2.19"
+percent-encoding = "2.3.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.10.9"
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "json",
+] }
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", default-features = false, features = [
+    "macros",
+    "rt-multi-thread",
+    "signal",
+    "time",
+] }
+tokio-util = { version = "0.7.19", default-features = false, features = ["rt"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
+    "fmt",
+    "env-filter",
+] }
+url = "2.5.8"

@@ -1,0 +1,20 @@
+[book]
+title = "raven-rs"
+description = "A Rust framework for indexing EVM chains"
+authors = ["nivek3"]
+language = "en"
+src = "docs"
+
+[output.html]
+site-url = "/raven-rs/"
+default-theme = "light"
+preferred-dark-theme = "navy"
+
+git-repository-url = "https://github.com/nivek3/raven-rs"
+git-repository-icon = "fab-github"
+edit-url-template = "https://github.com/nivek3/raven-rs/edit/main/docs/{path}"
+no-section-label = true
+
+[output.html.search]
+enable = true
+limit-results = 20

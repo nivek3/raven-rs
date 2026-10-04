@@ -1,0 +1,40 @@
+[package]
+name = "raven-example-uniswap-v3"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+autotests = false
+
+[dependencies]
+tracing-subscriber.workspace = true
+clap.workspace = true
+dotenv.workspace = true
+raven-engine.workspace = true
+raven-evm.workspace = true
+raven-postgres.workspace = true
+rpc-block-crawler-datasource.workspace = true
+alloy-primitives.workspace = true
+alloy-provider.workspace = true
+alloy-rpc-types-eth.workspace = true
+bigdecimal = { workspace = true, features = ["serde", "string-only"] }
+alloy-sol-types.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = [
+	"macros",
+	"rt-multi-thread",
+	"signal",
+	"time",
+] }
+
+sqlx.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = [
+	"macros",
+	"rt-multi-thread",
+	"time",
+	"net",
+] }
