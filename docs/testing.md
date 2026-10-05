@@ -43,7 +43,7 @@ cargo run -p raven-testkit --locked --offline -- verify
 
 It requires Rust/Cargo, Foundry (`forge`, `cast`, and `anvil`), `psql`, cached Rust dependencies, the Solidity compiler required by the fixtures, and a dedicated `RAVEN_DATABASE_URL`. The command leaves generated schemas in that database and prints a path to a JSON report and process logs. Only a report whose `status` is `passed` confirms the complete workflow.
 
-For narrower workflows, the testkit provides `erc20-rollback` and `uniswap --official-v3-smoke`. Read the [testkit guide](https://github.com/nivek3/raven-rs/blob/main/examples/testkit/README.md) before using either: their database and indexer coverage differs from full verification.
+For narrower workflows, the testkit provides `erc20-rollback` and `official-v3-smoke`. Read the [testkit guide](https://github.com/nivek3/raven-rs/blob/main/examples/testkit/README.md) before using either: their database and indexer coverage differs from full verification.
 
 ## What to test in an application
 

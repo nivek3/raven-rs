@@ -110,9 +110,7 @@ impl<P: Provider> TransferHandler<P> {
         transaction_id: &str,
     ) -> RavenResult<u64> {
         if let Some(transaction) = entities.load::<Transaction>(transaction_id).await? {
-            if transaction.id != transaction_id
-                || transaction.block_number != event.block_number.to_string()
-            {
+            if transaction.block_number != event.block_number.to_string() {
                 return Err(ExampleError::InvalidEntityState("Transaction").into());
             }
             return transaction
@@ -256,8 +254,7 @@ async fn change_balance(
             value: "0".to_owned(),
             value_exact: "0".to_owned(),
         });
-    if balance.id != id || balance.contract != contract.id || balance.account.as_deref() != account
-    {
+    if balance.contract != contract.id || balance.account.as_deref() != account {
         return Err(ExampleError::InvalidEntityState("ERC20Balance").into());
     }
     let value = BigInt::from_str(&balance.value_exact)

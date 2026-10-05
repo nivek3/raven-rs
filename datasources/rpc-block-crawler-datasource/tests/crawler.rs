@@ -172,7 +172,9 @@ async fn no_log_demand_skips_get_logs_with_explicit_source_filters() {
             .updates
             .is_empty()
     );
-    assert_eq!(rpc.calls().len(), 1);
+    let calls = rpc.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].method, "eth_getBlockByHash");
     assert!(matches!(
         original
             .block_by_hash(&hash(11))
@@ -182,16 +184,6 @@ async fn no_log_demand_skips_get_logs_with_explicit_source_filters() {
             .updates[0],
         Update::Log(_)
     ));
-    let none = RpcBlockCrawler::from_provider(rpc.provider(), EvmFilter::default()).unwrap();
-    assert!(
-        none.block_by_hash(&hash(11))
-            .await
-            .unwrap()
-            .unwrap()
-            .updates
-            .is_empty()
-    );
-    assert_eq!(rpc.calls().last().unwrap().method, "eth_getBlockByHash");
 }
 
 #[tokio::test]
@@ -300,7 +292,7 @@ async fn missing_blocks_and_invalid_config_are_explicit() {
 
 #[test]
 /// Verifies chain identities ignore an extra genesis_hash field when deserializing.
-fn persisted_identity_with_legacy_genesis_field_remains_readable() {
+fn chain_identity_deserialization_ignores_legacy_genesis_field() {
     let identity: rpc_block_crawler_datasource::ChainIdentity =
         serde_json::from_value(json!({"chain_id": 1, "genesis_hash": hash(10)})).unwrap();
     assert_eq!(identity.chain_id, 1);

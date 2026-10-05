@@ -103,7 +103,7 @@ async fn run_branch_change(queue_old_branch: bool) {
     engine.resync().await.unwrap();
     let options = RunOptions {
         start_block: 1,
-        channel_size: 8,
+        channel_capacity: 8,
         poll_interval: Duration::from_secs(1),
     };
     tokio::time::timeout(
@@ -338,7 +338,7 @@ async fn immature_batches_wait_for_polling_and_restart_from_the_committed_block_
             Arc::clone(&producer),
             RunOptions {
                 start_block: 1,
-                channel_size: 2,
+                channel_capacity: 2,
                 poll_interval: interval,
             },
             stop,

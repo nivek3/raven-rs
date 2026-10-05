@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub struct RunOptions {
     pub start_block: u64,
-    pub channel_size: usize,
+    pub channel_capacity: usize,
     pub poll_interval: Duration,
 }
 
@@ -30,7 +30,7 @@ impl Default for RunOptions {
     fn default() -> Self {
         Self {
             start_block: 0,
-            channel_size: 64,
+            channel_capacity: 64,
             poll_interval: Duration::from_secs(1),
         }
     }
@@ -66,7 +66,7 @@ where
     where
         D: Datasource<Hash = S::Hash, Update = S::Update> + 'static,
     {
-        if options.channel_size == 0 || options.poll_interval.is_zero() {
+        if options.channel_capacity == 0 || options.poll_interval.is_zero() {
             return Err(EngineError::InvalidRunOptions.into());
         }
         let mut resync_pending = false;
@@ -83,7 +83,7 @@ where
                 } => result,
             };
             if let Err(error) = ready {
-                if retry_preparation(&error) {
+                if is_retryable_chain_error(&error) {
                     tokio::select! {
                         _ = cancellation.cancelled() => return Ok(()),
                         _ = time::sleep(options.poll_interval) => continue,
@@ -96,7 +96,7 @@ where
             tracing::info!(next_block = next_block, "Starting block stream");
             let token = cancellation.child_token();
             let _cancel_on_drop_guard = token.clone().drop_guard();
-            let (sender, mut receiver) = mpsc::channel(options.channel_size);
+            let (sender, mut receiver) = mpsc::channel(options.channel_capacity);
             // JoinSet aborts the task if the caller drops run() before cleanup.
             let mut producer = JoinSet::new();
             let source = Arc::clone(&datasource);
@@ -120,7 +120,7 @@ where
                         match current {
                             Ok(true) => poll.reset(), // Preserve the producer; avoid polling starving a ready batch.
                             Ok(false) => break GenerationEnd::Resync,
-                            Err(error) if retry_preparation(&error) => break GenerationEnd::Retry,
+                            Err(error) if is_retryable_chain_error(&error) => break GenerationEnd::Retry,
                             Err(error) => break GenerationEnd::Failed(error),
                         }
                     },
@@ -136,7 +136,7 @@ where
                                 Ok(IngestOutcome::Applied | IngestOutcome::Ignored) => {}
                                 Ok(IngestOutcome::Resync) => break GenerationEnd::Resync,
                                 Ok(IngestOutcome::Deferred) => break GenerationEnd::Deferred,
-                                Err(error) if retry_preparation(&error) => break GenerationEnd::Resync,
+                                Err(error) if is_retryable_chain_error(&error) => break GenerationEnd::Resync,
                                 Err(error) => break GenerationEnd::Failed(error),
                             }
                         }
@@ -155,7 +155,7 @@ where
             drop(receiver); // Old queued batches cannot enter the next generation.
             let joined = match joined {
                 Err(error)
-                    if retry_preparation(&error)
+                    if is_retryable_chain_error(&error)
                         && !matches!(&end, GenerationEnd::Failed(_) | GenerationEnd::Cancelled) =>
                 {
                     // A source can lose a hash while assembling a batch after a reorg.
@@ -206,7 +206,7 @@ where
 }
 
 /// Returns whether a chain observation can be retried after the source changes or catches up.
-fn retry_preparation(error: &RavenError) -> bool {
+fn is_retryable_chain_error(error: &RavenError) -> bool {
     matches!(
         error,
         RavenError::Engine(

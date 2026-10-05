@@ -35,7 +35,7 @@ impl Testkit {
                 "--locked".into(),
                 "--offline".into(),
                 "--target".into(),
-                self.host.clone(),
+                self.host_target.clone(),
                 "--".into(),
                 "--ignored".into(),
             ]);

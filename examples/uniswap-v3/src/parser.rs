@@ -3,7 +3,6 @@ use crate::events::*;
 use alloy_primitives::Address;
 use alloy_rpc_types_eth::Filter;
 use alloy_sol_types::SolEvent;
-use async_trait::async_trait;
 use raven_engine::RavenResult;
 use raven_evm::{EvmFilter, LogUpdate, Parser, Update};
 
@@ -44,7 +43,6 @@ impl UniswapParser {
     }
 }
 
-#[async_trait]
 impl Parser for UniswapParser {
     type Output = LogUpdate;
     /// Declares the union of pool and position-manager log requirements.
@@ -55,7 +53,7 @@ impl Parser for UniswapParser {
         }))
     }
     /// Keeps only subscribed logs whose factory event comes from the configured factory.
-    async fn parse(&self, update: &Update) -> RavenResult<Option<LogUpdate>> {
+    fn parse(&self, update: &Update) -> RavenResult<Option<LogUpdate>> {
         let Update::Log(log) = update else {
             return Ok(None);
         };

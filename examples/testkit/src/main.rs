@@ -6,7 +6,7 @@ mod uniswap;
 mod values;
 mod verify;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use kit::Testkit;
 use serde_json::json;
 use signal::install_signal_handlers;
@@ -32,34 +32,20 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Build/test the workspace and verify both examples.
-    Verify(VerifyOptions),
-    /// Verify both examples.
-    Uniswap(VerifyOptions),
+    Verify,
+    /// Exercise pinned official V3 contracts without PostgreSQL or workspace tests.
+    OfficialV3Smoke,
     /// Show ERC20 automatic rollback on a same-height Anvil fork.
     Erc20Rollback,
 }
 
-#[derive(Args)]
-struct VerifyOptions {
-    /// Exercise pinned official V3 contracts without PostgreSQL or workspace tests.
-    #[arg(long)]
-    official_v3_smoke: bool,
-}
-
 /// Executes the selected workflow and writes its final report.
 fn run(workflow: Command) -> Result<bool> {
-    let (smoke, rollback, report_name) = match workflow {
-        Command::Verify(options) => (options.official_v3_smoke, false, "report.json"),
-        Command::Uniswap(options) => (options.official_v3_smoke, false, "uniswap-report.json"),
-        Command::Erc20Rollback => (false, true, "rollback-report.json"),
-    };
     let mut testkit = Testkit::new()?;
-    let result = if rollback {
-        testkit.erc20_rollback()
-    } else if smoke {
-        testkit.official_v3_smoke()
-    } else {
-        testkit.verify()
+    let (report_name, result) = match workflow {
+        Command::Verify => ("report.json", testkit.verify()),
+        Command::OfficialV3Smoke => ("official-v3-smoke-report.json", testkit.official_v3_smoke()),
+        Command::Erc20Rollback => ("rollback-report.json", testkit.erc20_rollback()),
     };
     if let Err(error) = result {
         testkit.report["status"] = json!("failed");
@@ -76,7 +62,7 @@ fn run(workflow: Command) -> Result<bool> {
     )?;
     if testkit.report["database_retained"] == true {
         println!("Configured test database: {}", testkit.database_name);
-        if rollback && let Some(schema) = testkit.report["schema"].as_str() {
+        if let Some(schema) = testkit.report["schema"].as_str() {
             println!("ERC20 schema: {schema}");
         }
     }

@@ -61,7 +61,6 @@ fn select_filters(values: &[u8]) -> EvmFilter {
     }
 }
 
-#[async_trait]
 impl Parser for RecordingParser {
     type Output = Parsed;
 
@@ -71,7 +70,7 @@ impl Parser for RecordingParser {
     }
 
     /// Parses one fixture update when it matches.
-    async fn parse(&self, update: &Update) -> RavenResult<Option<Parsed>> {
+    fn parse(&self, update: &Update) -> RavenResult<Option<Parsed>> {
         let Some(value) = log_value(update) else {
             return Ok(None);
         };
@@ -171,7 +170,6 @@ impl Select {
     }
 }
 
-#[async_trait]
 impl Parser for Select {
     type Output = (u8, &'static str, u64);
 
@@ -181,7 +179,7 @@ impl Parser for Select {
     }
 
     /// Parses one fixture update when it matches.
-    async fn parse(&self, update: &Update) -> RavenResult<Option<Self::Output>> {
+    fn parse(&self, update: &Update) -> RavenResult<Option<Self::Output>> {
         let Some(value) = log_value(update) else {
             return Ok(None);
         };
@@ -261,7 +259,6 @@ async fn update_parser_and_handler_order_is_stable_with_read_your_writes() {
 
 struct TextParser;
 
-#[async_trait]
 impl Parser for TextParser {
     type Output = String;
     /// Declares the fixture parser filter.
@@ -269,7 +266,7 @@ impl Parser for TextParser {
         all_logs()
     }
     /// Parses one fixture update when it matches.
-    async fn parse(&self, update: &Update) -> RavenResult<Option<String>> {
+    fn parse(&self, update: &Update) -> RavenResult<Option<String>> {
         Ok(log_value(update).map(|value| value.to_string()))
     }
 }
@@ -331,9 +328,9 @@ async fn nonmatching_updates_and_empty_blocks_do_not_invoke_handlers() {
     assert_eq!(store.operations().len(), 3);
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that parser can run without pipeline source or database.
-async fn parser_can_run_without_pipeline_source_or_database() {
+fn parser_can_run_without_pipeline_source_or_database() {
     let mut parser = RecordingParser::new("offline");
     parser.skip = Some(1);
     parser.fail = Some(2);
@@ -341,18 +338,16 @@ async fn parser_can_run_without_pipeline_source_or_database() {
     assert!(
         parser
             .parse(&Update::Log(value_log(&header, 1, 0)))
-            .await
             .unwrap()
             .is_none()
     );
     assert!(matches!(
-        parser.parse(&Update::Log(value_log(&header, 2, 1))).await,
+        parser.parse(&Update::Log(value_log(&header, 2, 1))),
         Err(RavenError::Parser(_))
     ));
     assert_eq!(
         parser
             .parse(&Update::Log(value_log(&header, 3, 2)))
-            .await
             .unwrap()
             .unwrap()
             .value,
@@ -614,8 +609,8 @@ async fn repeated_entity_mutations_preserve_null_vs_absence_and_revert_cleanly()
 }
 
 #[test]
-/// Verifies that builder rejects empty routes and invalid runtime options without initializing store.
-fn builder_rejects_empty_routes_and_invalid_runtime_options_without_initializing_store() {
+/// Verifies that builder rejects empty routes and invalid run options without initializing store.
+fn builder_rejects_empty_routes_and_invalid_run_options_without_initializing_store() {
     let source = source(vec![vec![1]]);
     let store = FakeStore::default();
     let result = Pipeline::builder()
@@ -631,7 +626,7 @@ fn builder_rejects_empty_routes_and_invalid_runtime_options_without_initializing
         .store(store.clone())
         .parser(RecordingParser::new("a"), (Append("first"),))
         .run_options(RunOptions {
-            channel_size: 0,
+            channel_capacity: 0,
             ..RunOptions::default()
         })
         .build();
@@ -643,8 +638,8 @@ fn builder_rejects_empty_routes_and_invalid_runtime_options_without_initializing
 }
 
 #[tokio::test]
-/// Verifies that configured cancellation reaches the runtime before source startup.
-async fn configured_cancellation_reaches_the_runtime_before_source_startup() {
+/// Verifies that configured cancellation reaches the pipeline before source startup.
+async fn configured_cancellation_reaches_the_pipeline_before_source_startup() {
     let source = source(vec![vec![1]]);
     let store = FakeStore::default();
     let token = CancellationToken::new();

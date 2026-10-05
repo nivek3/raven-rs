@@ -10,6 +10,7 @@ use raven_engine::{
 use raven_evm::{BlockBatch, EvmError, EvmFilter, LiteBlockHeader, LogUpdate, Update};
 use rpc_block_crawler_datasource::{ChainIdentity, RpcBlockCrawler};
 use std::sync::Arc;
+use tokio::task::JoinSet;
 
 #[derive(Clone)]
 pub(crate) struct UniswapSource {
@@ -125,10 +126,16 @@ impl Datasource for UniswapSource {
         cancellation: CancellationToken,
     ) -> RavenResult<()> {
         let child = cancellation.child_token();
+        // Dropping the outer producer task also cancels this child scope, so no
+        // nested acquisition work can outlive the source future.
+        let _cancel_on_drop_guard = child.clone().drop_guard();
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let pools = self.pools.clone();
         let producer_cancel = child.clone();
-        let task = tokio::spawn(async move { pools.consume(next, tx, producer_cancel).await });
+        // JoinSet aborts this nested task if consume itself is dropped by the
+        // engine's outer producer generation.
+        let mut producer = JoinSet::new();
+        producer.spawn(async move { pools.consume(next, tx, producer_cancel).await });
         let forward = async {
             while let Some(batch) = rx.recv().await {
                 let batch = self.add_positions(batch).await?;
@@ -145,8 +152,10 @@ impl Datasource for UniswapSource {
             result=forward=>result,
         };
         child.cancel();
-        let produced = task
+        let produced = producer
+            .join_next()
             .await
+            .ok_or(EngineError::MissingProducer)?
             .map_err(|error| RavenError::Source(Box::new(error)))?;
         result?;
         produced
@@ -157,6 +166,13 @@ impl Datasource for UniswapSource {
 mod tests {
     use super::*;
     use alloy_primitives::{Address, Bytes, Log};
+    use alloy_provider::ProviderBuilder;
+    use serde_json::{Value, json};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        sync::oneshot,
+        time::{Duration, timeout},
+    };
 
     /// Builds a minimal header with a predictable hash for merge tests.
     fn header(hash: u8) -> LiteBlockHeader {
@@ -198,6 +214,98 @@ mod tests {
             }
             _ => panic!("expected log position error"),
         }
+    }
+
+    async fn read_request(stream: &mut tokio::net::TcpStream) -> Value {
+        let mut bytes = Vec::new();
+        let mut buffer = [0; 4096];
+        loop {
+            let count = stream.read(&mut buffer).await.unwrap();
+            assert_ne!(count, 0, "fixture client closed before sending a request");
+            bytes.extend_from_slice(&buffer[..count]);
+            let Some(end) = bytes.windows(4).position(|value| value == b"\r\n\r\n") else {
+                continue;
+            };
+            let header = std::str::from_utf8(&bytes[..end]).unwrap();
+            let length = header
+                .lines()
+                .find_map(|line| {
+                    line.split_once(':').and_then(|(name, value)| {
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                })
+                .unwrap();
+            if bytes.len() >= end + 4 + length {
+                return serde_json::from_slice(&bytes[end + 4..end + 4 + length]).unwrap();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn dropping_consume_stops_the_nested_pool_crawler() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let (first_request, first_seen) = oneshot::channel();
+        let (release, release_response) = oneshot::channel();
+        let fixture = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut stream).await;
+            assert_eq!(request["method"], "eth_getBlockByNumber");
+            first_request.send(()).unwrap();
+            release_response.await.unwrap();
+            let block: raven_evm::Block = raven_evm::Block::default();
+            let response = json!({
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "result": block,
+            })
+            .to_string();
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
+                response.len()
+            );
+            let _ = stream.write_all(reply.as_bytes()).await;
+            drop(stream);
+            timeout(Duration::from_millis(100), listener.accept())
+                .await
+                .is_ok()
+        });
+        let provider = Arc::new(
+            ProviderBuilder::new()
+                .disable_recommended_fillers()
+                .connect_http(endpoint.parse().unwrap()),
+        );
+        let source = UniswapSource::new(provider, Address::ZERO).unwrap();
+        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+        let cancellation = CancellationToken::new();
+        let mut consume = Box::pin(source.consume(0, sender, cancellation));
+        let first_result = timeout(Duration::from_secs(1), async {
+            tokio::select! {
+                _ = first_seen => Ok(()),
+                result = &mut consume => Err(result),
+            }
+        })
+        .await;
+        match first_result {
+            Ok(Ok(())) => {}
+            Ok(Err(result)) => {
+                fixture.abort();
+                let _ = fixture.await;
+                panic!("consume ended before the fixture released its first response: {result:?}");
+            }
+            Err(_) => {
+                fixture.abort();
+                let _ = fixture.await;
+                panic!("consume did not issue its initial pool RPC request");
+            }
+        }
+        drop(consume);
+        release.send(()).unwrap();
+        assert!(
+            !fixture.await.unwrap(),
+            "dropped consume continued the pool crawler with another RPC request"
+        );
     }
 
     #[test]

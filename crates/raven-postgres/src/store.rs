@@ -3,7 +3,7 @@
 //! The store owns one advisory-locked connection pool, creates one dedicated
 //! schema and publishes each block's application state and block pointer atomically.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use raven_engine::{
@@ -36,7 +36,7 @@ pub struct PostgresChainStore<H, I> {
     schema: String,
     network_name: String,
     pid: i32,
-    storage: Arc<dyn PostgresStorage>,
+    storage: Box<dyn PostgresStorage>,
     marker: PhantomData<(H, I)>,
 }
 
@@ -123,7 +123,7 @@ impl<H, I> PostgresChainStore<H, I> {
             schema: schema.to_owned(),
             network_name: network_name.to_owned(),
             pid: writer_pid,
-            storage: Arc::new(storage),
+            storage: Box::new(storage),
             marker: PhantomData,
         })
     }
@@ -134,7 +134,7 @@ impl<H, I> PostgresChainStore<H, I> {
     }
 
     /// Opens a transaction that still owns the schema's writer lock.
-    pub(crate) async fn transaction(&self) -> RavenResult<Transaction<'static, Postgres>> {
+    async fn transaction(&self) -> RavenResult<Transaction<'static, Postgres>> {
         let mut tx = self.pool.begin().await.map_err(database)?;
         verify_writer(&mut tx, &self.schema, self.pid).await?;
         set_schema(&mut tx, &self.schema).await?;
@@ -143,7 +143,7 @@ impl<H, I> PostgresChainStore<H, I> {
 }
 
 /// Rejects schema names that cannot safely be used as dedicated identifiers.
-pub(crate) fn validate_schema(schema: &str) -> RavenResult<()> {
+fn validate_schema(schema: &str) -> RavenResult<()> {
     if schema.is_empty()
         || schema.len() > 63
         || !schema.as_bytes()[0].is_ascii_lowercase()
@@ -159,7 +159,7 @@ pub(crate) fn validate_schema(schema: &str) -> RavenResult<()> {
 }
 
 /// Restricts the current transaction's search path to the indexing schema.
-pub(crate) async fn set_schema(conn: &mut PgConnection, schema: &str) -> RavenResult<()> {
+async fn set_schema(conn: &mut PgConnection, schema: &str) -> RavenResult<()> {
     // LOCAL prevents the schema from leaking beyond the current transaction.
     sqlx::query("SELECT set_config('search_path', $1, true)")
         .bind(format!(r#""{schema}", pg_catalog"#))
@@ -170,11 +170,7 @@ pub(crate) async fn set_schema(conn: &mut PgConnection, schema: &str) -> RavenRe
 }
 
 /// Confirms that this transaction still runs on the advisory-lock owner connection.
-pub(crate) async fn verify_writer(
-    conn: &mut PgConnection,
-    schema: &str,
-    pid: i32,
-) -> RavenResult<()> {
+async fn verify_writer(conn: &mut PgConnection, schema: &str, pid: i32) -> RavenResult<()> {
     let owned: bool = sqlx::query_scalar(
         "SELECT pg_backend_pid() = $2 AND EXISTS (
             SELECT 1 FROM pg_catalog.pg_locks
@@ -191,7 +187,7 @@ pub(crate) async fn verify_writer(
 }
 
 /// Reads a persisted BIGINT height encoded as text.
-pub(crate) fn height(row: &PgRow, name: &str) -> RavenResult<u64> {
+fn height(row: &PgRow, name: &str) -> RavenResult<u64> {
     row.try_get::<String, _>(name)
         .map_err(database)?
         .parse()
@@ -199,7 +195,7 @@ pub(crate) fn height(row: &PgRow, name: &str) -> RavenResult<u64> {
 }
 
 /// Deserializes a stored block row into its lightweight canonical header.
-pub(crate) fn header<H: DeserializeOwned>(row: &PgRow) -> RavenResult<LiteBlockHeader<H>> {
+fn header<H: DeserializeOwned>(row: &PgRow) -> RavenResult<LiteBlockHeader<H>> {
     Ok(LiteBlockHeader {
         number: height(row, "number")?,
         hash: row.try_get::<Json<H>, _>("hash").map_err(database)?.0,
@@ -211,7 +207,7 @@ pub(crate) fn header<H: DeserializeOwned>(row: &PgRow) -> RavenResult<LiteBlockH
 }
 
 /// Reads the latest canonical block pointer, if indexing has started.
-pub(crate) async fn read_block_ptr<H: DeserializeOwned>(
+async fn read_block_ptr<H: DeserializeOwned>(
     conn: &mut PgConnection,
 ) -> RavenResult<Option<BlockPtr<H>>> {
     let row = sqlx::query("SELECT latest_block_number::text AS number, latest_block_hash AS hash FROM networks WHERE singleton AND latest_block_number IS NOT NULL")

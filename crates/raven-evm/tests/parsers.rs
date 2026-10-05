@@ -2,18 +2,18 @@ mod fake;
 
 use raven_engine::RavenError;
 use raven_evm::{
-    BlockParser, BlockUpdate, Bytes, EvmFilter, Filter, Log, LogParser, LogUpdate, Parser,
-    SolEvent, U256, Update, build_block_batch,
+    BlockParser, Bytes, EvmFilter, Filter, Log, LogParser, LogUpdate, Parser, SolEvent, U256,
+    Update, build_block_batch,
 };
 
 use fake::{Changed, Notice, address, all, block, hash, log};
 
-#[tokio::test]
+#[test]
 /// Verifies that typed event parser preserves value emitter and all chain positions.
-async fn typed_event_parser_preserves_value_emitter_and_all_chain_positions() {
+fn typed_event_parser_preserves_value_emitter_and_all_chain_positions() {
     let parser = LogParser::<Changed>::new(address(5));
     let input = Update::Log(LogUpdate::try_from(log(1, 4)).unwrap());
-    let parsed = parser.parse(&input).await.unwrap().unwrap();
+    let parsed = parser.parse(&input).unwrap().unwrap();
     assert_eq!(
         parsed.value,
         Changed {
@@ -32,14 +32,13 @@ async fn typed_event_parser_preserves_value_emitter_and_all_chain_positions() {
     assert!(filter.logs.unwrap().topics[0].contains(&Changed::SIGNATURE_HASH));
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that other kinds addresses and signatures do not match.
-async fn other_kinds_addresses_and_signatures_do_not_match() {
+fn other_kinds_addresses_and_signatures_do_not_match() {
     let parser = LogParser::<Changed>::new(address(5));
     assert!(
         parser
-            .parse(&Update::Block(Box::new(BlockUpdate { block: block() })))
-            .await
+            .parse(&Update::Block(Box::new(block())))
             .unwrap()
             .is_none()
     );
@@ -51,16 +50,15 @@ async fn other_kinds_addresses_and_signatures_do_not_match() {
         assert!(
             parser
                 .parse(&Update::Log(LogUpdate::try_from(log).unwrap()))
-                .await
                 .unwrap()
                 .is_none()
         );
     }
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that matching malformed body topics and padding are parser errors.
-async fn matching_malformed_body_topics_and_padding_are_parser_errors() {
+fn matching_malformed_body_topics_and_padding_are_parser_errors() {
     let parser = LogParser::<Changed>::new(address(5));
     for kind in 0..5 {
         let mut log = LogUpdate::try_from(log(0, 0)).unwrap();
@@ -77,15 +75,15 @@ async fn matching_malformed_body_topics_and_padding_are_parser_errors() {
         }
         log.log = Log::new_unchecked(address(5), topics, data);
         assert!(matches!(
-            parser.parse(&Update::Log(log)).await,
+            parser.parse(&Update::Log(log)),
             Err(RavenError::Parser(_))
         ));
     }
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that custom indexed constraints remain exact and signature is intersected.
-async fn custom_indexed_constraints_remain_exact_and_signature_is_intersected() {
+fn custom_indexed_constraints_remain_exact_and_signature_is_intersected() {
     let original = log(0, 0);
     let indexed = original.inner.topics()[1];
     let filter = Filter::new()
@@ -103,14 +101,12 @@ async fn custom_indexed_constraints_remain_exact_and_signature_is_intersected() 
     assert!(
         parser
             .parse(&Update::Log(LogUpdate::try_from(original).unwrap()))
-            .await
             .unwrap()
             .is_some()
     );
     assert!(
         parser
             .parse(&Update::Log(LogUpdate::try_from(other).unwrap()))
-            .await
             .unwrap()
             .is_none()
     );
@@ -119,15 +115,14 @@ async fn custom_indexed_constraints_remain_exact_and_signature_is_intersected() 
     assert!(
         parser
             .parse(&Update::Log(LogUpdate::try_from(log(0, 0)).unwrap()))
-            .await
             .unwrap()
             .is_none()
     );
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that anonymous events do not invent a signature topic.
-async fn anonymous_events_do_not_invent_a_signature_topic() {
+fn anonymous_events_do_not_invent_a_signature_topic() {
     let parser = LogParser::<Notice>::new(address(5));
     let mut log = log(0, 0);
     log.inner.data = Notice {
@@ -146,22 +141,18 @@ async fn anonymous_events_do_not_invent_a_signature_topic() {
     );
     let parsed = parser
         .parse(&Update::Log(LogUpdate::try_from(log).unwrap()))
-        .await
         .unwrap()
         .unwrap();
     assert_eq!(parsed.value.value, U256::from(7));
     assert_eq!(parsed.log_index, Some(0));
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that block parser preserves full payload and has no log metadata.
-async fn block_parser_preserves_full_payload_and_has_no_log_metadata() {
+fn block_parser_preserves_full_payload_and_has_no_log_metadata() {
     let block = block();
     let parsed = BlockParser
-        .parse(&Update::Block(Box::new(BlockUpdate {
-            block: block.clone(),
-        })))
-        .await
+        .parse(&Update::Block(Box::new(block.clone())))
         .unwrap()
         .unwrap();
     assert_eq!(parsed.value, block);
@@ -176,7 +167,6 @@ async fn block_parser_preserves_full_payload_and_has_no_log_metadata() {
     assert!(
         BlockParser
             .parse(&Update::Log(LogUpdate::try_from(log(0, 0)).unwrap()))
-            .await
             .unwrap()
             .is_none()
     );
@@ -189,25 +179,22 @@ async fn block_parser_preserves_full_payload_and_has_no_log_metadata() {
     );
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that block parser wraps the payload without revalidating transaction bodies.
-async fn block_parser_wraps_the_payload_without_revalidating_transaction_bodies() {
+fn block_parser_wraps_the_payload_without_revalidating_transaction_bodies() {
     let mut block = block();
     block.transactions.convert_to_hashes();
     let parsed = BlockParser
-        .parse(&Update::Block(Box::new(BlockUpdate {
-            block: block.clone(),
-        })))
-        .await
+        .parse(&Update::Block(Box::new(block.clone())))
         .unwrap()
         .unwrap();
     assert_eq!(parsed.value, block);
     assert_eq!(parsed.value.transactions.len(), 2);
 }
 
-#[tokio::test]
+#[test]
 /// Verifies that filtered and unfiltered batches deliver identical typed values in order.
-async fn filtered_and_unfiltered_batches_deliver_identical_typed_values_in_order() {
+fn filtered_and_unfiltered_batches_deliver_identical_typed_values_in_order() {
     let make_parser = |emitter, account| {
         let data = Changed {
             account,
@@ -247,7 +234,7 @@ async fn filtered_and_unfiltered_batches_deliver_identical_typed_values_in_order
         let mut output = Vec::new();
         for update in &batch.updates {
             for (index, parser) in parsers.iter().enumerate() {
-                if let Some(parsed) = parser.parse(update).await.unwrap() {
+                if let Some(parsed) = parser.parse(update).unwrap() {
                     output.push((index, parsed));
                 }
             }

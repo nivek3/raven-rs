@@ -14,14 +14,9 @@ pub type BlockBatch = raven_engine::BlockBatch<B256, Update>;
 /// EVM data delivered within a block batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Update {
-    Block(Box<BlockUpdate>),
+    /// Full Ethereum block payload, including transaction bodies.
+    Block(Box<Block>),
     Log(LogUpdate),
-}
-
-/// Full Ethereum block payload, including transaction bodies.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockUpdate {
-    pub block: Block,
 }
 
 /// Mined log with its block, transaction and global log coordinates.
@@ -102,15 +97,15 @@ pub fn build_block_batch(
     }
     let mut updates: Vec<Update> = Vec::new();
     if filter.blocks {
-        updates.push(Update::Block(Box::new(BlockUpdate { block })));
+        updates.push(Update::Block(Box::new(block)));
     }
     // The map orders unique global log indices; transaction order must agree.
-    let mut previous_transaction = 0;
+    let mut previous_transaction_index = 0;
     for log in unique.into_values() {
-        if log.transaction_index < previous_transaction {
+        if log.transaction_index < previous_transaction_index {
             return Err(EvmError::LogPosition.into());
         }
-        previous_transaction = log.transaction_index;
+        previous_transaction_index = log.transaction_index;
         if filter
             .logs
             .as_ref()

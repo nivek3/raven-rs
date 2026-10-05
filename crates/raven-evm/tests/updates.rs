@@ -1,8 +1,6 @@
 mod fake;
 
-use raven_evm::{
-    BlockUpdate, EvmError, EvmFilter, Filter, Log, LogUpdate, Update, build_block_batch,
-};
+use raven_evm::{EvmError, EvmFilter, Filter, Log, LogUpdate, Update, build_block_batch};
 
 use fake::{address, all, assert_error, block, hash, header, log};
 
@@ -13,10 +11,7 @@ fn normalization_sorts_deduplicates_and_emits_full_block_first() {
     let logs = vec![log(1, 4), log(0, 2), log(0, 0), log(0, 2)];
     let batch = build_block_batch(block.clone(), logs, &all()).unwrap();
     assert_eq!(batch.header, header());
-    assert_eq!(
-        batch.updates[0],
-        Update::Block(Box::new(BlockUpdate { block }))
-    );
+    assert_eq!(batch.updates[0], Update::Block(Box::new(block)));
     let positions: Vec<_> = batch.updates[1..]
         .iter()
         .map(|update| match update {

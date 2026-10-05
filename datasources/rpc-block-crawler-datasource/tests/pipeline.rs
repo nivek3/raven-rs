@@ -6,12 +6,12 @@ use raven_evm::EvmFilter;
 use rpc_block_crawler_datasource::{RpcBlockCrawler, RpcBlockCrawlerConfig};
 use std::{sync::Arc, time::Duration};
 
-/// Returns common runtime test options.
+/// Returns common pipeline test options.
 fn options() -> RunOptions {
     RunOptions {
         start_block: 1,
         poll_interval: Duration::from_millis(10),
-        channel_size: 1,
+        channel_capacity: 1,
     }
 }
 

@@ -5,7 +5,6 @@ use std::marker::PhantomData;
 use alloy_primitives::{Address, B256};
 use alloy_rpc_types_eth::{Block, Filter};
 use alloy_sol_types::SolEvent;
-use async_trait::async_trait;
 use raven_engine::{RavenError, RavenResult};
 
 use crate::EvmFilter;
@@ -42,8 +41,8 @@ impl LogUpdate {
 /// Selects and decodes EVM updates into typed application values.
 /// Returns None for a non-match and an error for matching but malformed input.
 /// Implementations must preserve relevant chain metadata and produce repeatable
-/// results from the same update.
-#[async_trait]
+/// results from the same update. Selection and decoding operate on the supplied
+/// update in memory; perform asynchronous I/O in a source or handler.
 pub trait Parser: Send + Sync {
     type Output: Send + Sync;
 
@@ -51,7 +50,7 @@ pub trait Parser: Send + Sync {
     fn filter(&self) -> EvmFilter;
 
     /// Parses one normalized update, returning no value when it does not match.
-    async fn parse(&self, update: &Update) -> RavenResult<Option<Self::Output>>;
+    fn parse(&self, update: &Update) -> RavenResult<Option<Self::Output>>;
 }
 
 /// Typed ABI event parser with exact address/topic matching. For non-anonymous
@@ -88,7 +87,6 @@ impl<E: SolEvent> LogParser<E> {
     }
 }
 
-#[async_trait]
 impl<E: SolEvent + Send + Sync> Parser for LogParser<E> {
     type Output = Parsed<E>;
 
@@ -101,7 +99,7 @@ impl<E: SolEvent + Send + Sync> Parser for LogParser<E> {
     }
 
     /// Decodes a matching log update and preserves its canonical coordinates.
-    async fn parse(&self, update: &Update) -> RavenResult<Option<Parsed<E>>> {
+    fn parse(&self, update: &Update) -> RavenResult<Option<Parsed<E>>> {
         let Update::Log(log) = update else {
             return Ok(None);
         };
@@ -127,7 +125,6 @@ impl<E: SolEvent + Send + Sync> Parser for LogParser<E> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BlockParser;
 
-#[async_trait]
 impl Parser for BlockParser {
     type Output = Parsed<Block>;
 
@@ -140,11 +137,11 @@ impl Parser for BlockParser {
     }
 
     /// Wraps a full block update with its block position.
-    async fn parse(&self, update: &Update) -> RavenResult<Option<Parsed<Block>>> {
-        let Update::Block(update) = update else {
+    fn parse(&self, update: &Update) -> RavenResult<Option<Parsed<Block>>> {
+        let Update::Block(block) = update else {
             return Ok(None);
         };
-        let block = &update.block;
+        let block = block.as_ref();
         Ok(Some(Parsed {
             value: block.clone(),
             block_number: block.header.inner.number,

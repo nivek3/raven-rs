@@ -1,4 +1,4 @@
-# Configuration and runtime
+# Pipeline configuration
 
 Raven's framework configuration is assembled through `Pipeline::builder()`. An application normally builds its own CLI and environment layer, then maps those values to the builder, datasource, storage, and handlers.
 
@@ -10,7 +10,7 @@ Raven's framework configuration is assembled through `Pipeline::builder()`. An a
 - `store`: the `ChainStore` holding network metadata and progress.
 - `cancellation_token`: shared graceful-stop signal.
 
-The engine's `RunOptions` defaults to start block `0`, channel capacity `64`, and a one-second chain polling interval. A custom run option must use a positive channel capacity and polling interval.
+The engine's `RunOptions` has `start_block`, `channel_capacity`, and `poll_interval` fields. It defaults to start block `0`, channel capacity `64`, and a one-second chain polling interval. A custom run option must use a positive channel capacity and polling interval.
 
 ## Example CLI conventions
 

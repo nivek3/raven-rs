@@ -33,7 +33,7 @@ where
 {
     /// Sends a parsed value to its handlers when the parser matches the update.
     async fn process(&self, entities: &mut dyn EntityStore, update: &Update) -> RavenResult<()> {
-        if let Some(value) = self.parser.parse(update).await? {
+        if let Some(value) = self.parser.parse(update)? {
             self.handlers.handle(entities, &value).await?;
         }
         Ok(())
@@ -221,7 +221,7 @@ where
         if self.processor.routes.is_empty() {
             return Err(PipelineError::NoParsers.into());
         }
-        if self.options.channel_size == 0 || self.options.poll_interval.is_zero() {
+        if self.options.channel_capacity == 0 || self.options.poll_interval.is_zero() {
             return Err(EngineError::InvalidRunOptions.into());
         }
         Ok(Pipeline {

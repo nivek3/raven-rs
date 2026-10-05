@@ -19,7 +19,7 @@ pub use config::Config;
 pub use entities::*;
 pub use error::ExampleError;
 pub use events::{Burn, Initialize, Mint, PoolCreated, PositionManager, Swap};
-pub use handlers::{Mapping, MappingHandler};
+pub use handlers::Mapping;
 use raven_engine::{CancellationToken, FinalityPolicy, RavenResult};
 use raven_evm::{B256, Pipeline};
 use raven_postgres::PostgresChainStore;
@@ -38,12 +38,12 @@ pub async fn run(config: Config, cancellation: CancellationToken) -> RavenResult
                     .map_err(|_| ExampleError::InvalidEndpoint)?,
             ),
     );
-    let mapping = Arc::new(Mapping::new(
+    let mapping = Mapping::new(
         Arc::clone(&provider),
         config.factory,
         config.position_manager,
         ChainConfig::load(config.chain_config.as_deref())?,
-    ));
+    );
     let parser = parser::UniswapParser::new(config.factory, config.position_manager);
     let source = source::UniswapSource::new(provider, config.position_manager)?;
     let store = tokio::select! {
@@ -60,7 +60,7 @@ pub async fn run(config: Config, cancellation: CancellationToken) -> RavenResult
         .from_block(config.start_block)
         .finality_policy(FinalityPolicy::Confirmations(config.confirmations))
         .cancellation_token(cancellation)
-        .parser(parser, (MappingHandler(mapping),))
+        .parser(parser, (mapping,))
         .build()?;
     pipeline.run().await
 }

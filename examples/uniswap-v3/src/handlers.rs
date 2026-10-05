@@ -31,8 +31,8 @@ pub(crate) async fn load<T: Entity>(store: &mut dyn EntityStore, id: &str) -> Ra
 }
 pub(crate) struct Context {
     pub timestamp: u64,
-    pub number: u64,
-    pub tx: String,
+    pub block_number: u64,
+    pub transaction_hash: String,
     pub log_index: u64,
     pub origin: String,
     pub gas_price: BigDecimal,
@@ -147,8 +147,8 @@ impl<P: Provider> Mapping<P> {
             .ok_or(ExampleError::MissingMetadata)?;
         Ok(Context {
             timestamp: block.header.inner.timestamp,
-            number: event.block_number,
-            tx: transaction_hash.to_string(),
+            block_number: event.block_number,
+            transaction_hash: transaction_hash.to_string(),
             log_index: event.log_index.ok_or(ExampleError::MissingMetadata)?,
             origin: transaction.inner.signer().to_string().to_lowercase(),
             gas_price: integer(
@@ -236,8 +236,8 @@ impl<P: Provider> Mapping<P> {
         context: &Context,
     ) -> RavenResult<()> {
         let tx = Transaction {
-            id: context.tx.clone(),
-            block_number: BigDecimal::from(context.number),
+            id: context.transaction_hash.clone(),
+            block_number: BigDecimal::from(context.block_number),
             timestamp: BigDecimal::from(context.timestamp),
             gas_price: context.gas_price.clone(),
             // Store zero gas_used; receipt gas is not part of this mapping.
@@ -386,7 +386,7 @@ impl<P: Provider> Mapping<P> {
             token1: token1.id.clone(),
             fee_tier: integer(&event.value.fee.to_string()),
             created_at_timestamp: BigDecimal::from(context.timestamp),
-            created_at_block_number: BigDecimal::from(context.number),
+            created_at_block_number: BigDecimal::from(context.block_number),
             ..Pool::default()
         };
         store.save(&pool).await?;
@@ -528,7 +528,7 @@ impl<P: Provider> Mapping<P> {
         }
         self.tvl(&mut pool, &token0, &token1, &mut factory, &bundle);
         self.transaction(store, &context).await?;
-        let entity_id = format!("{}#{}", context.tx, pool.tx_count);
+        let entity_id = format!("{}#{}", context.transaction_hash, pool.tx_count);
         let lower_id = format!("{id}#{lower}");
         let upper_id = format!("{id}#{upper}");
         let mut lower_tick = store.load::<Tick>(&lower_id).await?;
@@ -572,7 +572,7 @@ impl<P: Provider> Mapping<P> {
         if mint {
             let entity = MintEntity {
                 id: entity_id,
-                transaction: context.tx.clone(),
+                transaction: context.transaction_hash.clone(),
                 timestamp: BigDecimal::from(context.timestamp),
                 pool: id.clone(),
                 token0: pool.token0.clone(),
@@ -592,7 +592,7 @@ impl<P: Provider> Mapping<P> {
         } else {
             let entity = BurnEntity {
                 id: entity_id,
-                transaction: context.tx.clone(),
+                transaction: context.transaction_hash.clone(),
                 timestamp: BigDecimal::from(context.timestamp),
                 pool: id.clone(),
                 token0: pool.token0.clone(),
@@ -736,8 +736,8 @@ impl<P: Provider> Mapping<P> {
         }
         self.transaction(store, &context).await?;
         let swap = SwapEntity {
-            id: format!("{}#{}", context.tx, pool.tx_count),
-            transaction: context.tx.clone(),
+            id: format!("{}#{}", context.transaction_hash, pool.tx_count),
+            transaction: context.transaction_hash.clone(),
             timestamp: BigDecimal::from(context.timestamp),
             pool: id.clone(),
             token0: pool.token0.clone(),
@@ -802,7 +802,7 @@ fn new_tick(pool: &str, index: i32, context: &Context) -> Tick {
         pool_address: Some(pool.into()),
         tick_idx: BigDecimal::from(index),
         created_at_timestamp: BigDecimal::from(context.timestamp),
-        created_at_block_number: BigDecimal::from(context.number),
+        created_at_block_number: BigDecimal::from(context.block_number),
         price0: price.clone(),
         price1: round34(BigDecimal::from(1) / price),
         ..Tick::default()
@@ -812,24 +812,23 @@ fn new_tick(pool: &str, index: i32, context: &Context) -> Tick {
 /// Membership is read through EntityStore before ABI decoding. New pools from
 /// earlier logs are immediately visible; malformed logs from unrelated contracts
 /// cannot stop an index that does not track them.
-pub struct MappingHandler<P = RootProvider>(pub Arc<Mapping<P>>);
 #[async_trait]
-impl<P: Provider> Handler<LogUpdate> for MappingHandler<P> {
+impl<P: Provider> Handler<LogUpdate> for Mapping<P> {
     /// Dispatches a decoded pool or position-manager log to its accounting handler.
     async fn handle(&self, store: &mut dyn EntityStore, log: &LogUpdate) -> RavenResult<()> {
         let Some(signature) = log.log.topics().first() else {
             return Ok(());
         };
         if signature == &PoolCreated::SIGNATURE_HASH {
-            if log.log.address.to_string().to_lowercase() != self.0.factory {
+            if log.log.address.to_string().to_lowercase() != self.factory {
                 return Ok(());
             }
             let value = PoolCreated::decode_log_validate(&log.log)
                 .map_err(|error| RavenError::Parser(Box::new(error)))?;
-            return self.0.created(store, &log.parsed(value.data)).await;
+            return self.created(store, &log.parsed(value.data)).await;
         }
-        if log.log.address == self.0.position_manager {
-            return self.0.position_event(store, log).await;
+        if log.log.address == self.position_manager {
+            return self.position_event(store, log).await;
         }
         let id = log.log.address.to_string().to_lowercase();
         if store.get(Pool::ENTITY_NAME, &id).await?.is_none() {
@@ -845,49 +844,47 @@ impl<P: Provider> Handler<LogUpdate> for MappingHandler<P> {
             };
         }
         if signature == &Initialize::SIGNATURE_HASH {
-            self.0.initialized(store, &decode!(Initialize)).await
+            self.initialized(store, &decode!(Initialize)).await
         } else if signature == &Swap::SIGNATURE_HASH {
-            self.0.swapped(store, &decode!(Swap)).await
+            self.swapped(store, &decode!(Swap)).await
         } else if signature == &Flash::SIGNATURE_HASH {
-            self.0.flashed(store, &decode!(Flash)).await
+            self.flashed(store, &decode!(Flash)).await
         } else if signature == &Mint::SIGNATURE_HASH {
             let event = decode!(Mint);
             let v = &event.value;
-            self.0
-                .liquidity_event(
-                    store,
-                    &event,
-                    LiquidityEventInput {
-                        kind: LiquidityKind::Mint,
-                        owner: v.owner,
-                        sender: Some(v.sender),
-                        lower: v.tickLower.as_i32(),
-                        upper: v.tickUpper.as_i32(),
-                        amount: v.amount.to_string(),
-                        raw0: v.amount0.to_string(),
-                        raw1: v.amount1.to_string(),
-                    },
-                )
-                .await
+            self.liquidity_event(
+                store,
+                &event,
+                LiquidityEventInput {
+                    kind: LiquidityKind::Mint,
+                    owner: v.owner,
+                    sender: Some(v.sender),
+                    lower: v.tickLower.as_i32(),
+                    upper: v.tickUpper.as_i32(),
+                    amount: v.amount.to_string(),
+                    raw0: v.amount0.to_string(),
+                    raw1: v.amount1.to_string(),
+                },
+            )
+            .await
         } else if signature == &Burn::SIGNATURE_HASH {
             let event = decode!(Burn);
             let v = &event.value;
-            self.0
-                .liquidity_event(
-                    store,
-                    &event,
-                    LiquidityEventInput {
-                        kind: LiquidityKind::Burn,
-                        owner: v.owner,
-                        sender: None,
-                        lower: v.tickLower.as_i32(),
-                        upper: v.tickUpper.as_i32(),
-                        amount: v.amount.to_string(),
-                        raw0: v.amount0.to_string(),
-                        raw1: v.amount1.to_string(),
-                    },
-                )
-                .await
+            self.liquidity_event(
+                store,
+                &event,
+                LiquidityEventInput {
+                    kind: LiquidityKind::Burn,
+                    owner: v.owner,
+                    sender: None,
+                    lower: v.tickLower.as_i32(),
+                    upper: v.tickUpper.as_i32(),
+                    amount: v.amount.to_string(),
+                    raw0: v.amount0.to_string(),
+                    raw1: v.amount1.to_string(),
+                },
+            )
+            .await
         } else {
             Ok(())
         }

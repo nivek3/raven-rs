@@ -68,12 +68,6 @@ the official contracts.
 Both examples are checked for lowercase hexadecimal text. All Uniswap native
 entity versions are also compared with clean canonical replay.
 
-The Uniswap entrypoint runs the same acceptance workflow:
-
-```sh
-cargo run -p raven-testkit --locked --offline -- uniswap
-```
-
 Afterward, the owned processes stop while the run's dynamic schemas remain in
 the configured database. Logs and a JSON report remain in the temporary directory
 printed by the tool. Only `status: "passed"` confirms that the checks completed
@@ -82,13 +76,13 @@ successfully.
 For a quick contract-only check that skips workspace tests and PostgreSQL:
 
 ```sh
-cargo run -p raven-testkit --locked --offline -- uniswap --official-v3-smoke
+cargo run -p raven-testkit --locked --offline -- official-v3-smoke
 ```
 
 Both workflows use a local Anvil chain without a mainnet fork or a mainnet RPC.
 They verify local contract/indexer behavior, not production RPC performance. See
 the [Uniswap verification guide](uniswap-v3/README.md#verification) for coverage.
 
-The Rust tool lives in `[testkit](testkit)` and
+The Rust tool lives in [testkit](testkit) and
 provides three subcommands, including the
 [ERC20 rollback demonstration](erc20/README.md#run-the-rollback-example).

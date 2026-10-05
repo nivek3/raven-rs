@@ -158,7 +158,6 @@ pub struct FakeSource {
 struct SourceState {
     by_hash: BTreeMap<B256, BlockBatch>,
     canonical: BTreeMap<u64, B256>,
-    hash_reads: Vec<B256>,
 }
 
 impl FakeSource {
@@ -189,11 +188,6 @@ impl FakeSource {
             });
         }
         batch
-    }
-
-    /// Returns hashes requested through random-access reads.
-    pub fn hash_reads(&self) -> Vec<B256> {
-        self.state.read().unwrap().hash_reads.clone()
     }
 
     /// Replaces the fixture source's canonical chain.
@@ -253,10 +247,9 @@ impl BlockSource for FakeSource {
             .map(|hash| self.project(state.by_hash[hash].clone())))
     }
 
-    /// Records and reads a fixture batch by hash.
+    /// Reads a fixture batch by hash.
     async fn block_by_hash(&self, hash: &B256) -> RavenResult<Option<BlockBatch>> {
-        let mut state = self.state.write().unwrap();
-        state.hash_reads.push(*hash);
+        let state = self.state.read().unwrap();
         Ok(state
             .by_hash
             .get(hash)

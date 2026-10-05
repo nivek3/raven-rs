@@ -230,8 +230,8 @@ async fn intervals_use_committed_mapping_state_and_cross_hour_day_boundaries() {
     };
     let mut context = Context {
         timestamp: 86399,
-        number: 10,
-        tx: "tx".into(),
+        block_number: 10,
+        transaction_hash: "tx".into(),
         log_index: 1,
         origin: "owner".into(),
         gas_price: integer("1"),
@@ -555,7 +555,7 @@ async fn malformed_untracked_pool_logs_are_ignored_before_decoding() {
         transaction_index: 0,
         log_index: 0,
     };
-    let handler = super::MappingHandler(Arc::new(mapping()));
+    let handler = mapping();
     handler.handle(&mut store, &log).await.unwrap();
     assert!(store.0.is_empty());
     let id = address.to_string().to_lowercase();
@@ -760,7 +760,7 @@ async fn nft_events_preserve_deployed_collect_behavior_and_same_block_snapshot()
     let (block, tx) = cached_block(hash, 10, 0x15180, token0, 7);
     *mapping.block.lock().await = Some((hash, block));
     let manager = mapping.position_manager;
-    let handler = super::MappingHandler(Arc::new(mapping));
+    let handler = mapping;
     let mut store = Memory::default();
     for (address, decimals) in [(token0, 2), (token1, 3)] {
         let id = address.to_string().to_lowercase();
@@ -889,11 +889,10 @@ async fn deleted_nft_positions_and_foreign_transfers_are_ignored() {
     assert!(
         parser
             .parse(&raven_evm::Update::Log(log.clone()))
-            .await
             .unwrap()
             .is_some()
     );
-    let handler = super::MappingHandler(Arc::new(mapping));
+    let handler = mapping;
     let mut store = Memory::default();
     handler.handle(&mut store, &log).await.unwrap();
     assert!(store.0.is_empty());
@@ -901,7 +900,6 @@ async fn deleted_nft_positions_and_foreign_transfers_are_ignored() {
     assert!(
         parser
             .parse(&raven_evm::Update::Log(log.clone()))
-            .await
             .unwrap()
             .is_none()
     );
@@ -953,8 +951,8 @@ async fn flash_updates_fee_growth_and_tick_daily_fields_keep_reference_copy_orde
     assert_eq!(store.0.len(), 1);
     let context = Context {
         timestamp: 86401,
-        number: 10,
-        tx: "tx".into(),
+        block_number: 10,
+        transaction_hash: "tx".into(),
         log_index: 0,
         origin: id.clone(),
         gas_price: integer("1"),
@@ -1006,8 +1004,8 @@ async fn crossed_ticks_preserve_signed_remainder_and_update_current_tick_before_
     .parsed(());
     let context = Context {
         timestamp: 86401,
-        number: 10,
-        tx: "tx".into(),
+        block_number: 10,
+        transaction_hash: "tx".into(),
         log_index: 0,
         origin: id.clone(),
         gas_price: integer("1"),

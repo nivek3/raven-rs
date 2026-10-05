@@ -31,7 +31,7 @@ pub struct Testkit {
     pub database_url: String,
     pub rust_env: BTreeMap<String, String>,
     pub pg_env: BTreeMap<String, String>,
-    pub host: String,
+    pub host_target: String,
     pub binaries: PathBuf,
     pub rpc_url: String,
     pub accounts: Vec<String>,
@@ -74,7 +74,7 @@ impl Testkit {
             database_url: env::var("RAVEN_DATABASE_URL").unwrap_or_default(),
             rust_env,
             pg_env: env::vars().collect(),
-            host: String::new(),
+            host_target: String::new(),
             binaries: PathBuf::new(),
             rpc_url: format!("http://127.0.0.1:{rpc_port}"),
             accounts: Vec::new(),
@@ -447,7 +447,7 @@ impl Testkit {
             None,
             Some("rustc-version.log"),
         )?;
-        self.host = rustc
+        self.host_target = rustc
             .lines()
             .find_map(|line| line.strip_prefix("host: "))
             .ok_or("rustc did not report a host target")?
@@ -456,7 +456,7 @@ impl Testkit {
             "--locked".into(),
             "--offline".into(),
             "--target".into(),
-            self.host.clone(),
+            self.host_target.clone(),
         ];
         let mut test = vec![
             "cargo".into(),
@@ -476,7 +476,11 @@ impl Testkit {
         ];
         build.extend(common);
         self.command(&build, Some(&self.rust_env), Some("rust-build.log"))?;
-        self.binaries = self.root.join("target").join(&self.host).join("debug");
+        self.binaries = self
+            .root
+            .join("target")
+            .join(&self.host_target)
+            .join("debug");
         self.check("current workspace builds and registered Rust tests pass");
         Ok(())
     }
@@ -494,7 +498,7 @@ impl Testkit {
             None,
             Some("rustc-version.log"),
         )?;
-        self.host = rustc
+        self.host_target = rustc
             .lines()
             .find_map(|line| line.strip_prefix("host: "))
             .ok_or("rustc did not report a host target")?
@@ -507,9 +511,13 @@ impl Testkit {
             "--locked".into(),
             "--offline".into(),
         ];
-        args.extend(["--target".into(), self.host.clone()]);
+        args.extend(["--target".into(), self.host_target.clone()]);
         self.command(&args, Some(&self.rust_env), Some("erc20-build.log"))?;
-        self.binaries = self.root.join("target").join(&self.host).join("debug");
+        self.binaries = self
+            .root
+            .join("target")
+            .join(&self.host_target)
+            .join("debug");
         Ok(())
     }
 

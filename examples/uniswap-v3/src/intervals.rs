@@ -147,7 +147,7 @@ pub(crate) async fn tick_day(
     store.save(&value).await
 }
 
-/// Updates pool, token, and tick interval aggregates for an event.
+/// Updates protocol daily aggregates and pool/token interval aggregates for an event.
 pub(crate) async fn update(
     store: &mut dyn EntityStore,
     context: &Context,
@@ -200,7 +200,7 @@ pub(crate) async fn update(
     .await
 }
 
-/// Updates both tokens' hourly and daily aggregates.
+/// Updates one token's hourly and daily aggregates.
 async fn update_token_intervals(
     store: &mut dyn EntityStore,
     context: &Context,

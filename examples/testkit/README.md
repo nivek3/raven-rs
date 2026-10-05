@@ -70,7 +70,7 @@ contracts, swaps across day/hour boundaries, and a same-height fork, without
 running the Rust workspace tests, starting an indexer, or connecting to PostgreSQL:
 
 ```sh
-cargo run -p raven-testkit --locked --offline -- uniswap --official-v3-smoke
+cargo run -p raven-testkit --locked --offline -- official-v3-smoke
 ```
 
 All three commands start their own Anvil instances. Full verification and rollback
@@ -86,7 +86,8 @@ Testkit report and process logs: <temporary-directory>/<report-name>.json
 ```
 
 Save this path as `REPORT`. Full verification writes `report.json`, rollback writes
-`rollback-report.json`, and the Uniswap workflow writes `uniswap-report.json`.
+`rollback-report.json`, and the contract smoke command writes
+`official-v3-smoke-report.json`.
 The same temporary directory contains output logs from Rust, Foundry, Anvil,
 indexers, and queries.
 

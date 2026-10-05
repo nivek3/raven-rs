@@ -34,5 +34,5 @@ name = "crawler"
 path = "tests/crawler.rs"
 
 [[test]]
-name = "runtime"
-path = "tests/runtime.rs"
+name = "pipeline"
+path = "tests/pipeline.rs"

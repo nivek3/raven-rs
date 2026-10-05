@@ -6,6 +6,6 @@
 - [Entities](entities.md)
 - [Storage](storage.md)
 - [Datasources](datasources.md)
-- [Configuration and runtime](configuration.md)
+- [Pipeline configuration](configuration.md)
 - [Examples](examples.md)
 - [Testing](testing.md)

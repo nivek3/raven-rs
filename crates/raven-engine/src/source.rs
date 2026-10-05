@@ -20,6 +20,7 @@ pub trait Datasource: Send + Sync {
     /// starting at `next_block` and satisfying the source's configured requirements.
     /// Cancellation must interrupt blocked sends and acquisition work. Once cancelled,
     /// return promptly; the pipeline joins the producer and discards its queue.
+    /// Tasks spawned by this method must be cancelled or aborted if its future is dropped.
     /// Finite sources return `Ok(())` at exhaustion; errors must not become empty batches.
     /// SourceChanged, SourceBehind and MissingBlock engine errors trigger delayed
     /// resynchronization and a new producer from committed progress. Other errors

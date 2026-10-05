@@ -168,11 +168,10 @@ Set `RAVEN_DATABASE_URL` in the workspace `.env` to a dedicated test database,
 then run:
 
 ```sh
-cargo run -p raven-testkit --locked --offline -- uniswap
 cargo run -p raven-testkit --locked --offline -- verify
 ```
 
-Both entrypoints run the same workspace acceptance. It builds/tests Rust, checks
+Full verification builds/tests Rust, checks
 all 20 native mappings, and deploys the official V3 Factory, position manager and
 swap router on its own Anvil chain. The Factory creates real V3 pools. Liquidity,
 swaps, NFT collection and transfers execute through the official contracts.
@@ -204,7 +203,7 @@ offline mode. Owned Anvil/indexer processes stop at the end. Only a report with
 For a quick deployment and contract lifecycle check without workspace tests or PostgreSQL:
 
 ```sh
-cargo run -p raven-testkit --locked --offline -- uniswap --official-v3-smoke
+cargo run -p raven-testkit --locked --offline -- official-v3-smoke
 ```
 
 This mode also exercises a swap across a day/hour boundary and an Anvil

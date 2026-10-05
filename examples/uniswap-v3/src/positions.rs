@@ -72,7 +72,7 @@ impl<P: Provider> Mapping<P> {
             token1: result.token1.to_string().to_lowercase(),
             tick_lower: format!("{pool}#{}", result.tickLower),
             tick_upper: format!("{pool}#{}", result.tickUpper),
-            transaction: context.tx.clone(),
+            transaction: context.transaction_hash.clone(),
             fee_growth_inside0_last_x128: integer(&result.feeGrowthInside0LastX128.to_string()),
             fee_growth_inside1_last_x128: integer(&result.feeGrowthInside1LastX128.to_string()),
             ..Default::default()
@@ -109,14 +109,14 @@ impl<P: Provider> Mapping<P> {
         position: &Position,
         context: &Context,
     ) -> RavenResult<()> {
-        let id = format!("{}#{}", position.id, context.number);
+        let id = format!("{}#{}", position.id, context.block_number);
         self.transaction(store, context).await?;
         let snapshot = PositionSnapshot {
             id: id.clone(),
             owner: position.owner.clone(),
             pool: position.pool.clone(),
             position: position.id.clone(),
-            block_number: integer(&context.number.to_string()),
+            block_number: integer(&context.block_number.to_string()),
             timestamp: integer(&context.timestamp.to_string()),
             liquidity: position.liquidity.clone(),
             deposited_token0: position.deposited_token0.clone(),
@@ -125,7 +125,7 @@ impl<P: Provider> Mapping<P> {
             withdrawn_token1: position.withdrawn_token1.clone(),
             collected_fees_token0: position.collected_fees_token0.clone(),
             collected_fees_token1: position.collected_fees_token1.clone(),
-            transaction: context.tx.clone(),
+            transaction: context.transaction_hash.clone(),
             fee_growth_inside0_last_x128: position.fee_growth_inside0_last_x128.clone(),
             fee_growth_inside1_last_x128: position.fee_growth_inside1_last_x128.clone(),
         };
