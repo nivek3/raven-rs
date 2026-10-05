@@ -14,6 +14,7 @@ use raven_engine::{
 use raven_evm::{
     B256, Block, BlockBatch, EvmFilter, LiteBlockHeader, RpcLog, Update, build_block_batch,
 };
+use raven_metrics::RpcMetrics;
 use serde::{Deserialize, Serialize};
 
 use crate::RpcError;
@@ -63,6 +64,7 @@ pub struct RpcBlockCrawler<T = RootProvider> {
     provider: Arc<T>,
     config: RpcBlockCrawlerConfig,
     filter: Arc<EvmFilter>,
+    metrics: RpcMetrics,
 }
 
 impl RpcBlockCrawler<RootProvider> {
@@ -103,14 +105,24 @@ impl<T: Provider> RpcBlockCrawler<T> {
             provider: Arc::new(provider),
             config,
             filter: Arc::new(filter),
+            metrics: RpcMetrics::new("default", "block"),
         })
+    }
+
+    /// Records requests under `index` instead of the default metrics label.
+    pub fn with_metrics(mut self, index: impl Into<String>) -> Self {
+        self.metrics = RpcMetrics::new(index, "block");
+        self
     }
 
     /// Loads the header at `number` and verifies that its reported height matches.
     async fn header_at(&self, number: u64) -> RavenResult<Option<LiteBlockHeader>> {
         let block = self
-            .provider
-            .get_block_by_number(number.into())
+            .metrics
+            .request(
+                "eth_getBlockByNumber",
+                self.provider.get_block_by_number(number.into()),
+            )
             .await
             .map_err(RpcError::Request)?;
         match block {
@@ -210,8 +222,8 @@ impl<T: Provider> BlockSource for RpcBlockCrawler<T> {
     async fn chain_identity(&self) -> RavenResult<ChainIdentity> {
         Ok(ChainIdentity {
             chain_id: self
-                .provider
-                .get_chain_id()
+                .metrics
+                .request("eth_chainId", self.provider.get_chain_id())
                 .await
                 .map_err(RpcError::Request)?,
         })
@@ -225,8 +237,8 @@ impl<T: Provider> BlockSource for RpcBlockCrawler<T> {
     /// Loads a header by its exact hash and rejects a mismatched response.
     async fn header_by_hash(&self, hash: &B256) -> RavenResult<Option<LiteBlockHeader>> {
         let block = self
-            .provider
-            .get_block_by_hash(*hash)
+            .metrics
+            .request("eth_getBlockByHash", self.provider.get_block_by_hash(*hash))
             .await
             .map_err(RpcError::Request)?;
         match block {
@@ -238,8 +250,11 @@ impl<T: Provider> BlockSource for RpcBlockCrawler<T> {
     /// Returns the provider's latest available header.
     async fn head(&self) -> RavenResult<LiteBlockHeader> {
         let block = self
-            .provider
-            .get_block_by_number(BlockNumberOrTag::Latest)
+            .metrics
+            .request(
+                "eth_getBlockByNumber",
+                self.provider.get_block_by_number(BlockNumberOrTag::Latest),
+            )
             .await
             .map_err(RpcError::Request)?;
         block
@@ -273,10 +288,21 @@ impl<T: Provider> BlockSource for RpcBlockCrawler<T> {
             .as_ref()
             .map(|filter| filter.clone().at_block_hash(*hash))
         {
-            tokio::try_join!(request.into_future(), self.provider.get_logs(&log_filter))
-                .map_err(RpcError::Request)?
+            tokio::try_join!(
+                self.metrics
+                    .request("eth_getBlockByHash", request.into_future()),
+                self.metrics
+                    .request("eth_getLogs", self.provider.get_logs(&log_filter)),
+            )
+            .map_err(RpcError::Request)?
         } else {
-            (request.await.map_err(RpcError::Request)?, Vec::new())
+            (
+                self.metrics
+                    .request("eth_getBlockByHash", request.into_future())
+                    .await
+                    .map_err(RpcError::Request)?,
+                Vec::new(),
+            )
         };
         let Some(block) = block else {
             if !logs.is_empty() {

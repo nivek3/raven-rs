@@ -20,7 +20,12 @@ pub(crate) struct UniswapSource {
 
 impl UniswapSource {
     /// Builds the paired RPC crawlers for pool and position-manager logs.
-    pub fn new(provider: Arc<RootProvider>, manager: Address) -> RavenResult<Self> {
+    pub fn new(
+        provider: Arc<RootProvider>,
+        manager: Address,
+        index: impl Into<String>,
+    ) -> RavenResult<Self> {
+        let index = index.into();
         Ok(Self {
             pools: RpcBlockCrawler::from_provider(
                 Arc::clone(&provider),
@@ -28,14 +33,16 @@ impl UniswapSource {
                     blocks: false,
                     logs: Some(pool_filter()),
                 },
-            )?,
+            )?
+            .with_metrics(index.clone()),
             positions: RpcBlockCrawler::from_provider(
                 provider,
                 EvmFilter {
                     blocks: false,
                     logs: Some(position_filter(manager)),
                 },
-            )?,
+            )?
+            .with_metrics(index),
         })
     }
     /// Merges two same-block log batches in canonical log order.
@@ -276,7 +283,7 @@ mod tests {
                 .disable_recommended_fillers()
                 .connect_http(endpoint.parse().unwrap()),
         );
-        let source = UniswapSource::new(provider, Address::ZERO).unwrap();
+        let source = UniswapSource::new(provider, Address::ZERO, "test").unwrap();
         let (sender, _receiver) = tokio::sync::mpsc::channel(1);
         let cancellation = CancellationToken::new();
         let mut consume = Box::pin(source.consume(0, sender, cancellation));

@@ -43,7 +43,8 @@ pub async fn run(config: Config, cancellation: CancellationToken) -> RavenResult
         Arc::clone(&provider),
         source_config,
         parser.filter(),
-    )?;
+    )?
+    .with_metrics(config.schema.clone());
     let handler = TransferHandler::new(provider, Duration::from_secs(30));
     let store = tokio::select! {
         biased;
@@ -59,6 +60,7 @@ pub async fn run(config: Config, cancellation: CancellationToken) -> RavenResult
         .from_block(config.start_block)
         .finality_policy(FinalityPolicy::Confirmations(config.confirmations))
         .cancellation_token(cancellation)
+        .metrics(config.schema.clone())
         .parser(parser, (handler,))
         .build()?;
     pipeline.run().await

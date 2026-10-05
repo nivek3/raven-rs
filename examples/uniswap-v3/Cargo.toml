@@ -11,6 +11,7 @@ clap.workspace = true
 dotenv.workspace = true
 raven-engine.workspace = true
 raven-evm.workspace = true
+raven-metrics = { workspace = true, features = ["prometheus"] }
 raven-postgres.workspace = true
 rpc-block-crawler-datasource.workspace = true
 alloy-primitives.workspace = true

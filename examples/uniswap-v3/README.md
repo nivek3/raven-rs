@@ -108,6 +108,7 @@ working directory; provide connection settings through your environment.
 | `--start-block` | `RAVEN_START_BLOCK` | Factory deployment block or an earlier complete-history start |
 | `--chain-config` | `RAVEN_CHAIN_CONFIG` | Optional application policy JSON; defaults to the Ethereum policy |
 | `--confirmations` | `RAVEN_CONFIRMATIONS` | Confirmation delay; default 12 |
+| `--metrics-listen-addr` | `RAVEN_METRICS_LISTEN_ADDR` | Optional Prometheus listener address; disabled unless configured |
 
 `config/ethereum.json` contains the Ethereum reference token, stable-price pool,
 liquidity threshold, whitelist, stablecoins, skipped pools and static token
@@ -119,8 +120,18 @@ The Ethereum minimum reference liquidity is 60 ETH.
 After setting the environment:
 
 ```sh
-cargo run -p raven-example-uniswap-v3 --locked --offline
+cargo run -p raven-example-uniswap-v3 --locked --offline -- \
+  --metrics-listen-addr 127.0.0.1:9465
 ```
+
+The command above enables the optional Prometheus listener on `127.0.0.1:9465`.
+After the process starts, confirm the scrape endpoint with:
+
+```sh
+curl --fail http://127.0.0.1:9465/metrics
+```
+
+Omit `--metrics-listen-addr` when no metrics listener is wanted.
 
 For Ethereum, set `--factory` and `--start-block` for the deployment you intend
 to index. Starting after PoolCreated events loses pool discovery and produces

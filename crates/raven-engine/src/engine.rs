@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use raven_metrics::IndexMetrics;
+
 use crate::{
     BlockBatch, BlockProcessor, BlockPtr, BlockSource, ChainStore, EngineError, FinalityPolicy,
     LiteBlockHeader, Network, PositionError, RavenResult, entity::EntityState, next_block_number,
@@ -28,6 +30,7 @@ pub struct Engine<S, T, P> {
     pub(crate) source: Arc<S>,
     pub(crate) store: T,
     pub(crate) processor: P,
+    pub(crate) metrics: IndexMetrics,
     policy: FinalityPolicy,
 }
 
@@ -44,6 +47,7 @@ where
             source,
             store,
             processor,
+            metrics: IndexMetrics::default(),
             policy: FinalityPolicy::Head,
         }
     }
@@ -55,15 +59,22 @@ where
         self
     }
 
+    /// Labels this engine's metrics with a stable index name. Configure before running.
+    pub fn with_metrics(mut self, index: impl Into<String>) -> Self {
+        self.metrics = IndexMetrics::new(index);
+        self
+    }
+
     /// Uses the persisted network metadata after initialization, even when block pointer is None.
     pub async fn next_block_number(&self, start_block: u64) -> RavenResult<u64> {
         let network = self.store.network().await?;
         let block_ptr = self.store.block_ptr().await?;
-        Ok(next_block_number(
-            start_block,
-            network.as_ref(),
-            block_ptr.as_ref(),
-        )?)
+        let next = next_block_number(start_block, network.as_ref(), block_ptr.as_ref())?;
+        self.metrics.position(
+            network.as_ref().map_or(start_block, Network::start_block),
+            block_ptr.as_ref().map(|pointer| pointer.number),
+        );
+        Ok(next)
     }
 
     /// Initialize the network metadata once. Caller must resync before consuming a stream.
@@ -79,7 +90,10 @@ where
         if self.store.block_ptr().await?.is_some() {
             return Err(PositionError::MissingNetwork.into());
         }
+        self.metrics.position(start_block, None);
         let head = self.source.head().await?;
+        self.metrics
+            .head(head.number, self.policy.processable_height(head.number));
         if !self.policy.permits(start_block, head.number) {
             return Err(EngineError::SourceBehind.into());
         }
@@ -134,7 +148,13 @@ where
         }
         let block_ptr = self.store.block_ptr().await?;
         next_block_number(network.start_block(), Some(&network), block_ptr.as_ref())?;
+        self.metrics.position(
+            network.start_block(),
+            block_ptr.as_ref().map(|pointer| pointer.number),
+        );
         let head = self.source.head().await?;
+        self.metrics
+            .head(head.number, self.policy.processable_height(head.number));
         if head.number < network.start_block() {
             return Err(EngineError::SourceBehind.into());
         }
@@ -177,6 +197,10 @@ where
             .await?
             .ok_or(PositionError::MissingNetwork)?;
         let block_ptr = self.store.block_ptr().await?;
+        self.metrics.position(
+            network.start_block(),
+            block_ptr.as_ref().map(|pointer| pointer.number),
+        );
         if let Some(block_ptr) = &block_ptr
             && batch.header.number <= block_ptr.number
         {
@@ -191,6 +215,8 @@ where
             });
         }
         let head = self.source.head().await?;
+        self.metrics
+            .head(head.number, self.policy.processable_height(head.number));
         if !self.policy.permits(batch.header.number, head.number) {
             return Ok(IngestOutcome::Deferred);
         }
@@ -224,6 +250,14 @@ where
     /// A moving or unavailable branch returns an error before mutation. A failure
     /// during execution leaves an atomic committed prefix for the next invocation.
     pub async fn resync(&mut self) -> RavenResult<()> {
+        let timer = self.metrics.resync_started();
+        let result = self.resync_inner().await;
+        timer.finish(result.is_ok());
+        result
+    }
+
+    /// Prepares and executes canonical transitions within one observed resynchronization.
+    async fn resync_inner(&mut self) -> RavenResult<()> {
         let network = self
             .store
             .network()
@@ -234,10 +268,16 @@ where
         }
         let block_ptr = self.store.block_ptr().await?;
         next_block_number(network.start_block(), Some(&network), block_ptr.as_ref())?;
+        self.metrics.position(
+            network.start_block(),
+            block_ptr.as_ref().map(|pointer| pointer.number),
+        );
         if let Some(block_ptr) = &block_ptr {
             self.local_header(block_ptr).await?;
         }
         let head = self.source.head().await?;
+        self.metrics
+            .head(head.number, self.policy.processable_height(head.number));
         if head.number < network.start_block() {
             return Err(EngineError::SourceBehind.into());
         }
@@ -324,12 +364,18 @@ where
             return Err(EngineError::BlockPtrConflict.into());
         }
         let mut expected = block_ptr;
+        let mut reorg = self.metrics.reorg_started();
         for transition in transitions {
             match transition {
                 ChainUpdate::Revert(header) => {
                     self.store.revert_block(&header).await?;
+                    reorg.reverted();
                     tracing::info!(block = header.number, "Block reverted");
                     expected = self.store.block_ptr().await?;
+                    self.metrics.position(
+                        network.start_block(),
+                        expected.as_ref().map(|pointer| pointer.number),
+                    );
                 }
                 ChainUpdate::Apply(batch) => {
                     self.apply(expected.as_ref(), &batch).await?;
@@ -350,6 +396,10 @@ where
     ) -> RavenResult<()> {
         self.verify_canonical(head).await?;
         let current = self.source.head().await?;
+        self.metrics.head(
+            current.number,
+            self.policy.processable_height(current.number),
+        );
         if current.number < head.number
             || (current.number == head.number && current.hash != head.hash)
             || max_apply.is_some_and(|number| !self.policy.permits(number, current.number))
@@ -408,11 +458,23 @@ where
         batch: &BlockBatch<S::Hash, S::Update>,
     ) -> RavenResult<()> {
         let mut entities = EntityState::new(&self.store, expected.cloned());
-        self.processor.process(&mut entities, batch).await?;
-        let changes = entities.into_changes()?;
-        self.store
+        let processing = self.metrics.processing_started();
+        let processed = async {
+            self.processor.process(&mut entities, batch).await?;
+            entities.into_changes()
+        }
+        .await;
+        processing.finish(processed.is_ok());
+        let changes = processed?;
+        let committing = self.metrics.commit_started();
+        let committed = self
+            .store
             .commit_block(expected, &batch.header, changes)
-            .await?;
+            .await;
+        committing.finish(committed.is_ok());
+        committed?;
+        self.metrics
+            .committed(batch.header.number, batch.updates.len() as u64);
         tracing::info!(
             block = batch.header.number,
             updates = batch.updates.len(),

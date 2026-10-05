@@ -12,6 +12,7 @@ Raven does not define an application's database model. An index owns its tables,
 - Datasource and persistent chain-store contracts.
 - A PostgreSQL store that commits application state, canonical block metadata, and progress together.
 - Block-oriented and range-log-oriented RPC datasources.
+- Canonical progress, processing, reorg and RPC metrics with an optional Prometheus exporter.
 
 ## What an application provides
 

@@ -87,6 +87,7 @@ impl Pipeline<(), (), ()> {
             options: RunOptions::default(),
             policy: FinalityPolicy::Head,
             cancellation: CancellationToken::new(),
+            metrics_index: "default".to_owned(),
         }
     }
 }
@@ -121,6 +122,7 @@ pub struct PipelineBuilder<D, S, T> {
     options: RunOptions,
     policy: FinalityPolicy,
     cancellation: CancellationToken,
+    metrics_index: String,
 }
 
 impl<D, S, T> PipelineBuilder<D, S, T> {
@@ -137,6 +139,7 @@ impl<D, S, T> PipelineBuilder<D, S, T> {
             options: self.options,
             policy: self.policy,
             cancellation: self.cancellation,
+            metrics_index: self.metrics_index,
         }
     }
 
@@ -153,6 +156,7 @@ impl<D, S, T> PipelineBuilder<D, S, T> {
             options: self.options,
             policy: self.policy,
             cancellation: self.cancellation,
+            metrics_index: self.metrics_index,
         }
     }
 
@@ -166,6 +170,7 @@ impl<D, S, T> PipelineBuilder<D, S, T> {
             options: self.options,
             policy: self.policy,
             cancellation: self.cancellation,
+            metrics_index: self.metrics_index,
         }
     }
 
@@ -207,6 +212,12 @@ impl<D, S, T> PipelineBuilder<D, S, T> {
         self.cancellation = cancellation;
         self
     }
+
+    /// Labels indexing metrics with a stable name, distinct for each concurrent index.
+    pub fn metrics(mut self, index: impl Into<String>) -> Self {
+        self.metrics_index = index.into();
+        self
+    }
 }
 
 impl<D, S, T> PipelineBuilder<D, S, T>
@@ -227,7 +238,8 @@ where
         Ok(Pipeline {
             datasource: Arc::new(self.datasource),
             engine: Engine::new(Arc::new(self.source), self.store, self.processor)
-                .with_finality_policy(self.policy),
+                .with_finality_policy(self.policy)
+                .with_metrics(self.metrics_index),
             options: self.options,
             cancellation: self.cancellation,
         })

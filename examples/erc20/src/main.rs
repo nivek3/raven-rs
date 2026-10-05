@@ -18,6 +18,13 @@ async fn main() -> std::process::ExitCode {
         .with_writer(std::io::stderr)
         .with_target(false)
         .init();
+    if let Some(address) = config.metrics_listen_addr {
+        if let Err(error) = raven_metrics::install_prometheus(address) {
+            eprintln!("Could not start Prometheus metrics listener: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+        eprintln!("Prometheus metrics available at http://{address}/metrics");
+    }
 
     #[cfg(unix)]
     let mut terminate =

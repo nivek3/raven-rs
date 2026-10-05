@@ -45,7 +45,8 @@ pub async fn run(config: Config, cancellation: CancellationToken) -> RavenResult
         ChainConfig::load(config.chain_config.as_deref())?,
     );
     let parser = parser::UniswapParser::new(config.factory, config.position_manager);
-    let source = source::UniswapSource::new(provider, config.position_manager)?;
+    let source =
+        source::UniswapSource::new(provider, config.position_manager, config.schema.clone())?;
     let store = tokio::select! {
         biased;
         _ = cancellation.cancelled() => return Ok(()),
@@ -60,6 +61,7 @@ pub async fn run(config: Config, cancellation: CancellationToken) -> RavenResult
         .from_block(config.start_block)
         .finality_policy(FinalityPolicy::Confirmations(config.confirmations))
         .cancellation_token(cancellation)
+        .metrics(config.schema.clone())
         .parser(parser, (mapping,))
         .build()?;
     pipeline.run().await
