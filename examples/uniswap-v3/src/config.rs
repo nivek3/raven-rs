@@ -1,5 +1,7 @@
 //! Command-line and environment configuration for the Uniswap V3 example.
 
+use std::net::SocketAddr;
+
 use alloy_primitives::Address;
 use clap::Parser;
 
@@ -59,4 +61,8 @@ pub struct Config {
     /// Number of head blocks to leave unprocessed.
     #[arg(long, env = "RAVEN_CONFIRMATIONS", default_value_t = 12)]
     pub confirmations: u64,
+
+    /// Optional address for the Prometheus metrics listener.
+    #[arg(long, env = "RAVEN_METRICS_LISTEN_ADDR")]
+    pub metrics_listen_addr: Option<SocketAddr>,
 }

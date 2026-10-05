@@ -9,6 +9,7 @@ Raven's framework configuration is assembled through `Pipeline::builder()`. An a
 - `datasource` and `block_source`: sequential and random-access chain access.
 - `store`: the `ChainStore` holding network metadata and progress.
 - `cancellation_token`: shared graceful-stop signal.
+- `metrics`: a stable index name for framework monitoring.
 
 The engine's `RunOptions` has `start_block`, `channel_capacity`, and `poll_interval` fields. It defaults to start block `0`, channel capacity `64`, and a one-second chain polling interval. A custom run option must use a positive channel capacity and polling interval.
 
@@ -24,6 +25,10 @@ cargo run -p raven-example-uniswap-v3 -- --help
 ```
 
 The examples load `.env` from the working directory. Treat it as configuration data, not a shell script; do not run `source .env`. Keep database credentials out of documentation and version control.
+
+Both examples optionally expose Prometheus metrics through `--metrics-listen-addr`
+or `RAVEN_METRICS_LISTEN_ADDR`. It has no default and starts no listener when
+omitted. See [Monitoring](monitoring.md) for setup and metric definitions.
 
 ## Startup and shutdown semantics
 

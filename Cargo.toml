@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/raven-engine",
     "crates/raven-evm",
+    "crates/raven-metrics",
     "crates/raven-postgres",
     "datasources/rpc-block-crawler-datasource",
     "datasources/rpc-log-crawler-datasource",
@@ -20,6 +21,7 @@ publish = false
 # Local workspace crates. This lets us reference them in other crates without specifying a path.
 raven-engine = { path = "crates/raven-engine" }
 raven-evm = { path = "crates/raven-evm" }
+raven-metrics = { path = "crates/raven-metrics" }
 raven-postgres = { path = "crates/raven-postgres" }
 rpc-block-crawler-datasource = { path = "datasources/rpc-block-crawler-datasource" }
 rpc-log-crawler-datasource = { path = "datasources/rpc-log-crawler-datasource" }
@@ -47,6 +49,10 @@ bigdecimal = "0.4.11"
 clap = { version = "4", features = ["derive", "env"] }
 dotenv = { package = "dotenvy", version = "0.15" }
 libc = "0.2"
+metrics = "0.24.6"
+metrics-exporter-prometheus = { version = "0.18.3", default-features = false, features = [
+    "http-listener",
+] }
 num-traits = "0.2.19"
 percent-encoding = "2.3.2"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -1,6 +1,9 @@
 //! Command-line and environment configuration for the ERC-20 example.
 
-use std::num::{NonZeroU64, NonZeroUsize};
+use std::{
+    net::SocketAddr,
+    num::{NonZeroU64, NonZeroUsize},
+};
 
 use alloy_primitives::Address;
 use clap::Parser;
@@ -57,4 +60,8 @@ pub struct Config {
     /// Maximum number of concurrent block requests.
     #[arg(long, env = "RAVEN_BLOCK_CONCURRENCY", default_value = "10")]
     pub block_concurrency: NonZeroUsize,
+
+    /// Optional address for the Prometheus metrics listener.
+    #[arg(long, env = "RAVEN_METRICS_LISTEN_ADDR")]
+    pub metrics_listen_addr: Option<SocketAddr>,
 }

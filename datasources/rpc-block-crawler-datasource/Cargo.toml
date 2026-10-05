@@ -10,6 +10,7 @@ readme = "README.md"
 tracing.workspace = true
 raven-engine.workspace = true
 raven-evm.workspace = true
+raven-metrics.workspace = true
 alloy-rpc-types-eth = { workspace = true, features = ["serde"] }
 async-trait.workspace = true
 thiserror.workspace = true

@@ -3,7 +3,7 @@
 //! `eth_getLogs` accelerates sequential history. Headers still form one verified
 //! parent chain, while random access delegates to the exact block crawler.
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, future::IntoFuture, sync::Arc, time::Duration};
 
 use alloy_primitives::Bloom;
 use alloy_provider::{Provider, ProviderBuilder, RootProvider};
@@ -17,6 +17,7 @@ use raven_engine::{
 use raven_evm::{
     B256, Block, BlockBatch, EvmFilter, LiteBlockHeader, RpcLog, Update, build_block_batch,
 };
+use raven_metrics::RpcMetrics;
 use rpc_block_crawler_datasource::RpcBlockCrawler;
 
 use crate::{ChainIdentity, RpcLogError};
@@ -51,6 +52,7 @@ pub struct RpcLogCrawler<T = RootProvider> {
     exact: RpcBlockCrawler<Arc<T>>,
     config: RpcLogCrawlerConfig,
     filter: Arc<EvmFilter>,
+    metrics: RpcMetrics,
 }
 
 impl<T> std::fmt::Debug for RpcLogCrawler<T> {
@@ -112,7 +114,16 @@ impl<T: Provider> RpcLogCrawler<T> {
             exact,
             config,
             filter: Arc::new(filter),
+            metrics: RpcMetrics::new("default", "log"),
         })
+    }
+
+    /// Records range requests under `index` instead of the default metrics label.
+    pub fn with_metrics(mut self, index: impl Into<String>) -> Self {
+        let index = index.into();
+        self.metrics = RpcMetrics::new(index.clone(), "log");
+        self.exact = self.exact.with_metrics(index);
+        self
     }
 
     /// Loads the requested block payload and verifies its height.
@@ -124,7 +135,9 @@ impl<T: Provider> RpcLogCrawler<T> {
         } else {
             request
         };
-        let block = request
+        let block = self
+            .metrics
+            .request("eth_getBlockByNumber", request.into_future())
             .await
             .map_err(RpcLogError::Request)?
             .ok_or(EngineError::MissingBlock)?;
@@ -154,8 +167,8 @@ impl<T: Provider> RpcLogCrawler<T> {
         while let Some((from, to)) = pending.pop() {
             let query = filter.clone().from_block(from).to_block(to);
             match self
-                .provider
-                .get_logs(&query)
+                .metrics
+                .request("eth_getLogs", self.provider.get_logs(&query))
                 .await
                 .map_err(|error| RavenError::from(RpcLogError::Request(error)))
             {
@@ -167,6 +180,7 @@ impl<T: Provider> RpcLogCrawler<T> {
                         to_block = to,
                         "Splitting rejected RPC log range"
                     );
+                    self.metrics.log_range_split();
                     pending.push((middle + 1, to));
                     pending.push((from, middle));
                 }

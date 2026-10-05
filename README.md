@@ -15,6 +15,7 @@ The [Raven guide](docs/README.md) covers [getting started](docs/getting-started.
 [block processing and reorgs](docs/concepts.md), [typed entities](docs/entities.md),
 and [application storage](docs/storage.md). Follow the
 [testing guide](docs/testing.md) for PostgreSQL tests and local testkit verification.
+The [monitoring guide](docs/monitoring.md) covers framework metrics and Prometheus.
 
 The guide is built with mdBook. To preview it locally from the workspace root:
 
@@ -80,6 +81,7 @@ match.
 | --- | --- |
 | [`raven-engine`](crates/raven-engine) | Canonical resynchronization, block ingestion, handlers and store contracts |
 | [`raven-evm`](crates/raven-evm) | EVM updates, typed parsers and pipeline assembly |
+| [`raven-metrics`](crates/raven-metrics) | Indexing and RPC metrics with optional Prometheus export |
 | [`raven-postgres`](crates/raven-postgres) | PostgreSQL progress and atomic application storage operations |
 | [`rpc-block-crawler-datasource`](datasources/rpc-block-crawler-datasource) | Block-oriented RPC acquisition |
 | [`rpc-log-crawler-datasource`](datasources/rpc-log-crawler-datasource) | Range-based log acquisition with exact-hash recovery |

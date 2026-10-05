@@ -17,7 +17,8 @@ The examples use the same source layout:
 - `events.rs` defines typed Solidity events.
 - `handlers.rs` contains state changes staged in Raven's entity state and committed atomically per block.
 - `lib.rs` assembles and runs the pipeline.
-- `main.rs` loads `.env`, parses configuration, installs shutdown handling and reports
+- `main.rs` loads `.env`, parses configuration, optionally starts the Prometheus
+listener, installs shutdown handling and reports
 the final result.
 
 Inspect an example's options from the workspace root:
@@ -34,6 +35,46 @@ Both examples own their serde entities, native tables, field mappings and
 history SQL. The framework commits application state, canonical block status and
 indexing progress in one transaction. See the [storage guide](../crates/raven-postgres/README.md)
 for application-owned SQL queries and the acceptance workflow below.
+
+## Monitoring
+
+Configure the example before enabling Prometheus. Both examples require
+`RAVEN_RPC_URL`, `RAVEN_DATABASE_URL`, `RAVEN_SCHEMA`, `RAVEN_NETWORK_NAME`, and
+`RAVEN_START_BLOCK`. ERC20 also requires `RAVEN_TOKEN`; Uniswap V3 also requires
+`RAVEN_FACTORY`. Each setting can instead be supplied through its corresponding
+CLI flag. See the complete [ERC20 configuration](erc20/README.md#configuration)
+and [Uniswap V3 configuration](uniswap-v3/README.md#configuration).
+
+The commands below assume those required values are already set in the environment
+or `.env`; the listener flag is an additional option. For example, an ERC20
+startup error listing `--network-name` and `--token` means `RAVEN_NETWORK_NAME`
+and `RAVEN_TOKEN` must be set, or those flags must be supplied with values for your
+index. With the required environment configured, start the examples with
+Prometheus enabled:
+
+```sh
+cargo run -p raven-example-erc20 --locked --offline -- \
+  --metrics-listen-addr 127.0.0.1:9464
+
+cargo run -p raven-example-uniswap-v3 --locked --offline -- \
+  --metrics-listen-addr 127.0.0.1:9465
+```
+
+Run each command in its own terminal with the corresponding example's
+configuration. The different ports allow the examples to run side by side. A
+successful startup prints the metrics URL. Inspect them from another terminal:
+
+```sh
+curl http://127.0.0.1:9464/metrics
+curl http://127.0.0.1:9465/metrics
+```
+
+The examples use their schema name as the shared `index` label for engine and
+crawler metrics. They report indexing progress, block processing and commit
+duration, RPC results, and actual rollback activity. The listener remains
+optional; `RAVEN_METRICS_LISTEN_ADDR` is the equivalent environment setting.
+See the [monitoring guide](../docs/monitoring.md) for definitions and Prometheus
+queries.
 
 ## Local acceptance
 

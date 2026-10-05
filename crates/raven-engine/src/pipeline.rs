@@ -102,6 +102,7 @@ where
             let source = Arc::clone(&datasource);
             let producer_token: CancellationToken = token.clone();
             producer.spawn(async move { source.consume(next_block, sender, producer_token).await });
+            self.metrics.producer_started();
             let mut poll = time::interval_at(
                 time::Instant::now() + options.poll_interval,
                 options.poll_interval,

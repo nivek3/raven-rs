@@ -9,6 +9,7 @@ autotests = false
 # Local workspace crates. This lets us reference them in other crates without specifying a path.
 raven-engine.workspace = true
 raven-evm.workspace = true
+raven-metrics = { workspace = true, features = ["prometheus"] }
 raven-postgres.workspace = true
 rpc-log-crawler-datasource.workspace = true
 

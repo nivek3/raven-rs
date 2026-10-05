@@ -1,0 +1,16 @@
+[package]
+name = "raven-metrics"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+prometheus = ["dep:metrics-exporter-prometheus"]
+
+[dependencies]
+metrics.workspace = true
+metrics-exporter-prometheus = { workspace = true, optional = true }
+
+[dev-dependencies]
+metrics-exporter-prometheus.workspace = true

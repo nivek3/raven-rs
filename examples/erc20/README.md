@@ -107,6 +107,7 @@ URL because it can contain credentials.
 | `--confirmations` | `RAVEN_CONFIRMATIONS` | no | Processing delay, default `12` |
 | `--max-block-range` | `RAVEN_MAX_BLOCK_RANGE` | no | Maximum `eth_getLogs` range, default `1000` |
 | `--block-concurrency` | `RAVEN_BLOCK_CONCURRENCY` | no | Concurrent block requests, default `10` |
+| `--metrics-listen-addr` | `RAVEN_METRICS_LISTEN_ADDR` | no | Prometheus listener address; disabled unless configured |
 
 Environment example:
 
@@ -118,11 +119,21 @@ export RAVEN_NETWORK_NAME=ethereum-mainnet
 export RAVEN_TOKEN=0xYourTokenAddress
 export RAVEN_START_BLOCK=12345678
 
-cargo run -p raven-example-erc20 --locked --offline
+cargo run -p raven-example-erc20 --locked --offline -- \
+  --metrics-listen-addr 127.0.0.1:9464
 ```
 
 Run `cargo run -p raven-example-erc20 -- --help` to inspect the equivalent
 CLI options and defaults.
+
+The command above enables the optional Prometheus listener on `127.0.0.1:9464`.
+After the process starts, confirm the scrape endpoint with:
+
+```sh
+curl --fail http://127.0.0.1:9464/metrics
+```
+
+Omit `--metrics-listen-addr` when no metrics listener is wanted.
 
 Treat the schema, token address and start block as one deployment configuration.
 Raven does not detect a token-address change in an existing schema, so use a new schema
@@ -185,7 +196,8 @@ export RAVEN_TOKEN="$TOKEN"
 export RAVEN_START_BLOCK=1
 export RAVEN_CONFIRMATIONS=0
 
-cargo run -p raven-example-erc20 --locked --offline
+cargo run -p raven-example-erc20 --locked --offline -- \
+  --metrics-listen-addr 127.0.0.1:9464
 ```
 
 Set `LOCAL_DATABASE_URL` to your local PostgreSQL connection settings before
