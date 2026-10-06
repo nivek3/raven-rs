@@ -35,9 +35,31 @@ let source = RpcLogCrawler::new(&rpc_url, filter)?;
 
 `RpcLogCrawlerConfig` controls maximum inclusive log range and concurrent block requests. See the [package README](https://github.com/nivek3/raven-rs/blob/main/datasources/rpc-log-crawler-datasource/README.md) for current configuration details.
 
+## Acquisition filters and parser matching
+
+The application configures the source's acquisition filter at construction. The source owns and executes that filter; parsers select and decode the updates it delivers. `Pipeline` registers parsers and handlers without deriving, replacing, or checking the source's filter.
+
+Each `eth_getLogs` request takes one filter object. That object can select multiple addresses and multiple candidate topics at each topic position. The built-in crawlers accept one `EvmFilter` whose `logs` field contains that log filter; the number of registered parsers does not determine the number of RPC requests.
+
+For example, a source can acquire every log from one contract while separate parsers handle its `Transfer` and `Approval` events:
+
+```rust,ignore
+let source = RpcLogCrawler::new(
+    &rpc_url,
+    EvmFilter {
+        blocks: false,
+        logs: Some(Filter::new().address(token_address)),
+    },
+)?;
+```
+
+Adding another parser for an event from that contract requires no filter change while the source already acquires all its logs. An application can instead restrict topics to the events it needs.
+
+`Parser::filter()` is a convenient way to describe one parser's acquisition needs. Applications can use it directly or use `EvmFilter::merge()` to produce one conservative filter from several parser filters. Applications may also configure a broader source filter directly, as above. The application is responsible for ensuring its source configuration covers all registered parsers' needs.
+
 ## Source correctness rules
 
-The selected filter must cover every parser's demand. `LogParser::filter()` provides one parser's demand; merge filters for multiple parsers. Configure the same requirements for sequential and random-access paths, otherwise recovery can replay a different payload from the original stream.
+Configure equivalent acquisition requirements for sequential and random-access paths, otherwise recovery can replay a different payload from the original stream. The built-in crawlers keep these requirements fixed for the run.
 
 Sources must emit empty blocks where appropriate, but never use empty batches to hide acquisition errors or unavailable data. A requested hash must return that hash if it returns a batch; it must not substitute whatever block is canonical at the same height.
 

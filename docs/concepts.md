@@ -1,5 +1,38 @@
 # Concepts
 
+## Processing flow
+
+`Pipeline` connects acquisition, canonical processing, application handlers, and storage. The engine coordinates each block's processing and commit.
+
+```mermaid
+flowchart TD
+    D["Datasource<br/>Ordered, complete block batches"]
+    E["Engine<br/>Canonical checks, finality and reorgs"]
+    S["BlockSource<br/>Headers and exact-hash batches"]
+    P["BlockProcessor<br/>Parser → Handler"]
+    ES["EntityStore<br/>Block-local reads and staged writes"]
+    C["ChainStore<br/>Atomic state and progress"]
+    PG["PostgresStorage<br/>Application SQL and rollback"]
+
+    D -->|BlockBatch| E
+    E -.->|Canonical and exact-hash reads| S
+    E -->|Process verified batch| P
+    P -->|Read and stage changes| ES
+    ES -.->|Committed entity reads| C
+    ES -->|Final changes collected by Engine| E
+    E -->|Commit or revert| C
+    C -->|PostgreSQL transaction| PG
+```
+
+
+
+1. **Acquire.** `Datasource` emits complete, ordered `BlockBatch` values under its configured acquisition filter. `BlockSource` provides headers and exact-hash batches for canonical verification and recovery. See [Acquisition filters and parser matching](datasources.md#acquisition-filters-and-parser-matching) for filter ownership.
+2. **Verify and process.** `Engine` checks canonical identity, continuity, and finality eligibility. The pipeline's `BlockProcessor` visits updates in source order, invokes parsers in registration order, and runs each parser's handlers in their declared order.
+3. **Stage.** Handlers read and write through `EntityStore`. Its block-local implementation keeps pending changes in memory, so later handlers observe earlier changes. It lazily reads committed entities through `ChainStore`.
+4. **Commit or recover.** After processing succeeds, `Engine` collects the final `EntityChange` values and calls `ChainStore::commit_block`. The store commits application state, the canonical header, and progress together. During reorg recovery, the engine calls `ChainStore::revert_block` before processing eligible replacements.
+
+With PostgreSQL, `PostgresChainStore` supplies the transaction and calls the application's `PostgresStorage` implementation for entity reads, SQL writes, and rollback. Handlers stage changes; the engine and store coordinate their publication. See [Storage](storage.md) for the application storage contract.
+
 ## Blocks, batches, and updates
 
 A datasource produces complete `BlockBatch` values in increasing block order. A batch has a header and its selected block and log updates. Empty blocks are still batches: they advance canonical progress and must not be silently omitted.
