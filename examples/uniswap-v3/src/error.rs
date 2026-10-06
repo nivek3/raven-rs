@@ -2,7 +2,7 @@ use raven_engine::RavenError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExampleError {
-    #[error("parsed event is missing log metadata")]
+    #[error("required transaction metadata is missing")]
     MissingMetadata,
     #[error("application entity state is invalid")]
     InvalidPoolState,

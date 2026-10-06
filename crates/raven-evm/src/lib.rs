@@ -11,6 +11,6 @@ pub use alloy_rpc_types_eth::{Block, Filter, FilterSet, Log as RpcLog, Topic};
 pub use alloy_sol_types::{SolEvent, sol};
 pub use error::{EvmError, PipelineError};
 pub use filter::EvmFilter;
-pub use parser::{BlockParser, LogParser, Parsed, Parser};
+pub use parser::{BlockParser, LogParser, ParsedBlock, ParsedLog, Parser};
 pub use pipeline::{Pipeline, PipelineBuilder};
 pub use update::{BlockBatch, LiteBlockHeader, LogUpdate, Update, build_block_batch};

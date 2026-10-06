@@ -10,30 +10,37 @@ use raven_engine::{RavenError, RavenResult};
 use crate::EvmFilter;
 use crate::update::{LogUpdate, Update};
 
-/// Typed value and its chain position. Block outputs have no transaction,
-/// log index or emitting address. Log outputs always populate those fields.
+/// Typed log value with its required block, transaction and log position.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Parsed<T> {
+pub struct ParsedLog<T> {
     pub value: T,
     pub block_number: u64,
     pub block_hash: B256,
-    pub transaction_hash: Option<B256>,
-    pub transaction_index: Option<u64>,
-    pub log_index: Option<u64>,
-    pub address: Option<Address>,
+    pub transaction_hash: B256,
+    pub transaction_index: u64,
+    pub log_index: u64,
+    pub address: Address,
+}
+
+/// Typed block value with its block position.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedBlock<T> {
+    pub value: T,
+    pub block_number: u64,
+    pub block_hash: B256,
 }
 
 impl LogUpdate {
     /// Attaches this log's canonical coordinates to a parsed application value.
-    pub fn parsed<T>(&self, value: T) -> Parsed<T> {
-        Parsed {
+    pub fn parsed<T>(&self, value: T) -> ParsedLog<T> {
+        ParsedLog {
             value,
             block_number: self.block_number,
             block_hash: self.block_hash,
-            transaction_hash: Some(self.transaction_hash),
-            transaction_index: Some(self.transaction_index),
-            log_index: Some(self.log_index),
-            address: Some(self.log.address),
+            transaction_hash: self.transaction_hash,
+            transaction_index: self.transaction_index,
+            log_index: self.log_index,
+            address: self.log.address,
         }
     }
 }
@@ -88,7 +95,7 @@ impl<E: SolEvent> LogParser<E> {
 }
 
 impl<E: SolEvent + Send + Sync> Parser for LogParser<E> {
-    type Output = Parsed<E>;
+    type Output = ParsedLog<E>;
 
     /// Returns the exact log demand accepted by this ABI event parser.
     fn filter(&self) -> EvmFilter {
@@ -99,7 +106,7 @@ impl<E: SolEvent + Send + Sync> Parser for LogParser<E> {
     }
 
     /// Decodes a matching log update and preserves its canonical coordinates.
-    fn parse(&self, update: &Update) -> RavenResult<Option<Parsed<E>>> {
+    fn parse(&self, update: &Update) -> RavenResult<Option<ParsedLog<E>>> {
         let Update::Log(log) = update else {
             return Ok(None);
         };
@@ -120,13 +127,13 @@ impl<E: SolEvent + Send + Sync> Parser for LogParser<E> {
     }
 }
 
-/// Wraps full block updates as `Parsed<Block>` with their block position.
+/// Wraps full block updates as `ParsedBlock<Block>` with their block position.
 /// Sources must supply transaction bodies for block updates.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BlockParser;
 
 impl Parser for BlockParser {
-    type Output = Parsed<Block>;
+    type Output = ParsedBlock<Block>;
 
     /// Requests complete block payloads without log updates.
     fn filter(&self) -> EvmFilter {
@@ -137,19 +144,15 @@ impl Parser for BlockParser {
     }
 
     /// Wraps a full block update with its block position.
-    fn parse(&self, update: &Update) -> RavenResult<Option<Parsed<Block>>> {
+    fn parse(&self, update: &Update) -> RavenResult<Option<ParsedBlock<Block>>> {
         let Update::Block(block) = update else {
             return Ok(None);
         };
         let block = block.as_ref();
-        Ok(Some(Parsed {
+        Ok(Some(ParsedBlock {
             value: block.clone(),
             block_number: block.header.inner.number,
             block_hash: block.header.hash,
-            transaction_hash: None,
-            transaction_index: None,
-            log_index: None,
-            address: None,
         }))
     }
 }

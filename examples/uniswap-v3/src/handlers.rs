@@ -18,7 +18,7 @@ use bigdecimal::BigDecimal;
 use raven_engine::{
     EngineError, Entity, EntityStore, EntityStoreExt, Handler, RavenError, RavenResult,
 };
-use raven_evm::{LogUpdate, Parsed};
+use raven_evm::{LogUpdate, ParsedLog};
 use std::{future::IntoFuture, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
@@ -113,10 +113,8 @@ impl<P: Provider> Mapping<P> {
     }
 
     /// Resolves the block and transaction metadata required by an event.
-    pub(crate) async fn context<T>(&self, event: &Parsed<T>) -> RavenResult<Context> {
-        let transaction_hash = event
-            .transaction_hash
-            .ok_or(ExampleError::MissingMetadata)?;
+    pub(crate) async fn context<T>(&self, event: &ParsedLog<T>) -> RavenResult<Context> {
+        let transaction_hash = event.transaction_hash;
         let mut cached = self.block.lock().await;
         if cached.as_ref().map(|(hash, _)| hash) != Some(&event.block_hash) {
             let block = tokio::time::timeout(
@@ -149,7 +147,7 @@ impl<P: Provider> Mapping<P> {
             timestamp: block.header.inner.timestamp,
             block_number: event.block_number,
             transaction_hash: transaction_hash.to_string(),
-            log_index: event.log_index.ok_or(ExampleError::MissingMetadata)?,
+            log_index: event.log_index,
             origin: transaction.inner.signer().to_string().to_lowercase(),
             gas_price: integer(
                 &transaction
@@ -343,7 +341,7 @@ impl<P: Provider> Mapping<P> {
     async fn created(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<PoolCreated>,
+        event: &ParsedLog<PoolCreated>,
     ) -> RavenResult<()> {
         let id = event.value.pool.to_string().to_lowercase();
         if self.chain.skip_pools.contains(&id) {
@@ -399,13 +397,9 @@ impl<P: Provider> Mapping<P> {
     async fn initialized(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<Initialize>,
+        event: &ParsedLog<Initialize>,
     ) -> RavenResult<()> {
-        let id = event
-            .address
-            .ok_or(ExampleError::MissingMetadata)?
-            .to_string()
-            .to_lowercase();
+        let id = event.address.to_string().to_lowercase();
         let Some(mut pool) = store.load::<Pool>(&id).await? else {
             return Ok(());
         };
@@ -451,7 +445,7 @@ impl<P: Provider> Mapping<P> {
     async fn liquidity_event<T>(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
         input: LiquidityEventInput,
     ) -> RavenResult<()> {
         let LiquidityEventInput {
@@ -464,11 +458,7 @@ impl<P: Provider> Mapping<P> {
             raw0,
             raw1,
         } = input;
-        let id = event
-            .address
-            .ok_or(ExampleError::MissingMetadata)?
-            .to_string()
-            .to_lowercase();
+        let id = event.address.to_string().to_lowercase();
         let Some(mut pool) = store.load::<Pool>(&id).await? else {
             return Ok(());
         };
@@ -623,12 +613,8 @@ impl<P: Provider> Mapping<P> {
     }
 
     /// Applies swap volume, pricing, liquidity, and interval accounting.
-    async fn swapped(&self, store: &mut dyn EntityStore, event: &Parsed<Swap>) -> RavenResult<()> {
-        let id = event
-            .address
-            .ok_or(ExampleError::MissingMetadata)?
-            .to_string()
-            .to_lowercase();
+    async fn swapped(&self, store: &mut dyn EntityStore, event: &ParsedLog<Swap>) -> RavenResult<()> {
+        let id = event.address.to_string().to_lowercase();
         // This pool is explicitly excluded from swap pricing.
         if id == "0x9663f2ca0454accad3e094448ea6f77443880454" {
             return Ok(());

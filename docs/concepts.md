@@ -37,7 +37,7 @@ With PostgreSQL, `PostgresChainStore` supplies the transaction and calls the app
 
 A datasource produces complete `BlockBatch` values in increasing block order. A batch has a header and its selected block and log updates. Empty blocks are still batches: they advance canonical progress and must not be silently omitted.
 
-EVM updates are `Update::Block(Box<Block>)` for full block payloads or `Update::Log(LogUpdate)` for mined logs. `BlockParser` wraps the block payload with its chain position; `LogParser` decodes a matching ABI event.
+EVM updates are `Update::Block(Box<Block>)` for full block payloads or `Update::Log(LogUpdate)` for mined logs. `BlockParser` returns `ParsedBlock<Block>` with the full block value, block number, and block hash. `LogParser<E>` decodes a matching ABI event into `ParsedLog<E>`, which also carries the required transaction hash, transaction index, log index, and emitting address. These log fields are non-optional, so handlers can access them directly. `LogUpdate::parsed(value)` attaches the same required metadata to a custom decoded log value.
 
 The engine checks branch identity and adjacency before an apply. It does not invent missing source payloads; a datasource is responsible for making configured payload complete, correctly ordered, unique, and tied to the batch header.
 

@@ -3,7 +3,7 @@ use alloy_provider::Provider;
 use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
 use raven_engine::{EntityStore, EntityStoreExt, RavenResult};
-use raven_evm::Parsed;
+use raven_evm::ParsedLog;
 
 use crate::{
     ExampleError,
@@ -18,9 +18,9 @@ impl<P: Provider> Mapping<P> {
     pub(crate) async fn pool_fee_vars<T>(
         &self,
         pool: &mut Pool,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
     ) -> RavenResult<()> {
-        let address = event.address.ok_or(ExampleError::MissingMetadata)?;
+        let address = event.address;
         let fee0 = self
             .call(
                 address,
@@ -47,7 +47,7 @@ impl<P: Provider> Mapping<P> {
         &self,
         store: &mut dyn EntityStore,
         tick: &mut Tick,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
         context: &Context,
     ) -> RavenResult<()> {
         let index = tick
@@ -56,7 +56,7 @@ impl<P: Provider> Mapping<P> {
             .ok_or(ExampleError::InvalidPoolState)?;
         let result = self
             .call(
-                event.address.ok_or(ExampleError::MissingMetadata)?,
+                event.address,
                 event.block_hash,
                 PoolMetadata::ticksCall {
                     tick: index
@@ -78,7 +78,7 @@ impl<P: Provider> Mapping<P> {
         store: &mut dyn EntityStore,
         pool: &str,
         index: &BigDecimal,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
         context: &Context,
     ) -> RavenResult<()> {
         let id = format!("{pool}#{index}");
@@ -94,7 +94,7 @@ impl<P: Provider> Mapping<P> {
         store: &mut dyn EntityStore,
         pool: &Pool,
         old: Option<BigDecimal>,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
         context: &Context,
     ) -> RavenResult<()> {
         let (Some(old), Some(new)) = (old, pool.tick.clone()) else {
@@ -140,13 +140,9 @@ impl<P: Provider> Mapping<P> {
     pub(crate) async fn flashed(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<Flash>,
+        event: &ParsedLog<Flash>,
     ) -> RavenResult<()> {
-        let id = event
-            .address
-            .ok_or(ExampleError::MissingMetadata)?
-            .to_string()
-            .to_lowercase();
+        let id = event.address.to_string().to_lowercase();
         let Some(mut pool) = store.load::<Pool>(&id).await? else {
             return Ok(());
         };

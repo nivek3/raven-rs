@@ -2,8 +2,8 @@ mod fake;
 
 use raven_engine::RavenError;
 use raven_evm::{
-    BlockParser, Bytes, EvmFilter, Filter, Log, LogParser, LogUpdate, Parser, SolEvent, U256,
-    Update, build_block_batch,
+    BlockParser, Bytes, EvmFilter, Filter, Log, LogParser, LogUpdate, ParsedBlock, ParsedLog,
+    Parser, SolEvent, U256, Update, build_block_batch,
 };
 
 use fake::{Changed, Notice, address, all, block, hash, log};
@@ -13,7 +13,7 @@ use fake::{Changed, Notice, address, all, block, hash, log};
 fn typed_event_parser_preserves_value_emitter_and_all_chain_positions() {
     let parser = LogParser::<Changed>::new(address(5));
     let input = Update::Log(LogUpdate::try_from(log(1, 4)).unwrap());
-    let parsed = parser.parse(&input).unwrap().unwrap();
+    let parsed: ParsedLog<Changed> = parser.parse(&input).unwrap().unwrap();
     assert_eq!(
         parsed.value,
         Changed {
@@ -23,10 +23,10 @@ fn typed_event_parser_preserves_value_emitter_and_all_chain_positions() {
     );
     assert_eq!(parsed.block_number, 100);
     assert_eq!(parsed.block_hash, hash(10));
-    assert_eq!(parsed.transaction_hash, Some(hash(2)));
-    assert_eq!(parsed.transaction_index, Some(1));
-    assert_eq!(parsed.log_index, Some(4));
-    assert_eq!(parsed.address, Some(address(5)));
+    assert_eq!(parsed.transaction_hash, hash(2));
+    assert_eq!(parsed.transaction_index, 1);
+    assert_eq!(parsed.log_index, 4);
+    assert_eq!(parsed.address, address(5));
     let filter = parser.filter();
     assert!(!filter.blocks);
     assert!(filter.logs.unwrap().topics[0].contains(&Changed::SIGNATURE_HASH));
@@ -144,14 +144,14 @@ fn anonymous_events_do_not_invent_a_signature_topic() {
         .unwrap()
         .unwrap();
     assert_eq!(parsed.value.value, U256::from(7));
-    assert_eq!(parsed.log_index, Some(0));
+    assert_eq!(parsed.log_index, 0);
 }
 
 #[test]
 /// Verifies that block parser preserves full payload and has no log metadata.
 fn block_parser_preserves_full_payload_and_has_no_log_metadata() {
     let block = block();
-    let parsed = BlockParser
+    let parsed: ParsedBlock<_> = BlockParser
         .parse(&Update::Block(Box::new(block.clone())))
         .unwrap()
         .unwrap();
@@ -160,10 +160,6 @@ fn block_parser_preserves_full_payload_and_has_no_log_metadata() {
     assert_eq!(parsed.value.transactions.len(), 2);
     assert_eq!(parsed.block_number, 100);
     assert_eq!(parsed.block_hash, hash(10));
-    assert_eq!(parsed.transaction_hash, None);
-    assert_eq!(parsed.transaction_index, None);
-    assert_eq!(parsed.log_index, None);
-    assert_eq!(parsed.address, None);
     assert!(
         BlockParser
             .parse(&Update::Log(LogUpdate::try_from(log(0, 0)).unwrap()))
