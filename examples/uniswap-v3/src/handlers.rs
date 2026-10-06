@@ -613,7 +613,11 @@ impl<P: Provider> Mapping<P> {
     }
 
     /// Applies swap volume, pricing, liquidity, and interval accounting.
-    async fn swapped(&self, store: &mut dyn EntityStore, event: &ParsedLog<Swap>) -> RavenResult<()> {
+    async fn swapped(
+        &self,
+        store: &mut dyn EntityStore,
+        event: &ParsedLog<Swap>,
+    ) -> RavenResult<()> {
         let id = event.address.to_string().to_lowercase();
         // This pool is explicitly excluded from swap pricing.
         if id == "0x9663f2ca0454accad3e094448ea6f77443880454" {
