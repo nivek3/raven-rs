@@ -1,10 +1,9 @@
 # Entities
 
-Entities are application values used while handlers process one block. Raven does not turn an entity into a predefined table. An application chooses the database mapping and history model behind it.
+Implement `Entity` for a serde value. Its unique, stable `ENTITY_NAME` selects the
+application's storage mapping; `id()` selects an instance.
 
 ## Typed entity access
-
-Implement `Entity` on a serde value. `ENTITY_NAME` is a stable application storage type name; `id()` selects one instance of that type. Keep the name unique within an index and aligned with the storage adapter's mapping.
 
 ```rust,ignore
 use raven_engine::{Entity, EntityStore, EntityStoreExt, RavenResult};
@@ -27,12 +26,18 @@ async fn update_balance(entities: &mut dyn EntityStore, id: &str) -> RavenResult
 }
 ```
 
-Import `EntityStoreExt` to use `load::<T>(id)`, `save(&entity)`, and `remove::<T>(id)`. `load` returns `None` if absent; JSON decode failures and IDs that disagree with the lookup are errors. `save` stages a complete replacement under `T::ENTITY_NAME` and `entity.id()`.
+| Method | Behavior |
+| --- | --- |
+| `load::<T>(id)` | Returns `None` if absent; errors on invalid JSON or mismatched IDs |
+| `save(&entity)` | Stages a complete replacement |
+| `remove::<T>(id)` | Stages deletion |
 
-Typed and raw access share one block-local state. The raw `EntityStore` API uses `EntityValue`, Raven's name for `serde_json::Value`, with `get(entity_type, id)`, `put(entity_type, id, value)`, and `delete(entity_type, id)`. Normal handlers should prefer typed entities; raw access is for dynamic entity kinds or values.
+Typed access shares block-local state with raw `get/put/delete`, which use
+`EntityValue` (`serde_json::Value`). Later handlers see earlier staged writes.
 
 ## Entity changes are not a schema
 
-At commit time Raven gives storage the final `EntityChange` values for the block. The storage adapter decides how those values become SQL: it may update a current table, close a historical range and insert a successor, or record a native immutable event. An entity name is therefore a mapping key, not a database table contract.
-
-The [ERC20 entities](https://github.com/nivek3/raven-rs/blob/main/examples/erc20/src/entities.rs) and [handlers](https://github.com/nivek3/raven-rs/blob/main/examples/erc20/src/handlers.rs) show typed reads and replacements for metadata, balances, transfers, and transactions.
+Storage receives each entity's final `EntityChange` for the block. Applications
+own the SQL mapping, history and rollback; entity names do not prescribe tables.
+See [Storage](storage.md) and the
+[ERC20 entities](https://github.com/nivek3/raven-rs/blob/main/examples/erc20/src/entities.rs).

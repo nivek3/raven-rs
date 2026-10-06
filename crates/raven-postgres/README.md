@@ -1,25 +1,20 @@
 # PostgreSQL storage
 
-`PostgresChainStore` owns canonical block metadata, indexing progress and one
-writer session per dedicated schema. It coordinates application writes and
-rollback in the same PostgreSQL transaction as progress.
+`PostgresChainStore` owns `blocks`, `networks` and one writer session per schema.
+Application state and canonical progress commit or revert in one transaction.
 
-The framework manages `blocks` and `networks`. Applications define entity
-relations, columns, serialization, version history and rollback SQL.
+## Writer connection
+
+Use direct PostgreSQL or session pooling. Transaction pooling is unsupported:
+ownership depends on a session advisory lock and backend PID. If the connection
+is replaced, operations fail; close and reopen the store.
 
 ## Application storage
 
-Implement [PostgresStorage](src/storage.rs) with three operations:
-
-- `get_entity`: read the current entity from application tables.
-- `apply_block`: apply one block's final changes, preserving required versions.
-- `revert_block`: undo the current head using persisted application versions.
-
-Each operation receives Raven's `PgConnection` with the index schema selected.
-Use that connection for all SQL. Do not commit, roll back, change session settings
-or publish external side effects inside these operations.
-
-Open a store with trusted application SQL and its storage implementation:
+Implement [PostgresStorage](src/storage.rs): `get_entity` reads current values,
+`apply_block` writes final changes/history, and `revert_block` restores the current
+head using persisted history. Use only the supplied connection; do not manage its
+transaction, change session settings or publish external side effects.
 
 ```rust,ignore
 let store = PostgresChainStore::<B256, ChainIdentity>::connect_with_schema_sql(
@@ -28,77 +23,39 @@ let store = PostgresChainStore::<B256, ChainIdentity>::connect_with_schema_sql(
 ).await?;
 ```
 
-For already-installed tables, `connect(url, schema, network_name, storage)` opens
-without extra application DDL. SQL initialization runs after writer ownership is
-acquired and in the same transaction as core DDL. Application SQL must be safe to
-execute on restart. Applications supply their schema and manage its changes.
+Application DDL runs after writer acquisition, in the core initialization
+transaction, and must be safe to rerun. `connect(url, schema, network_name, storage)`
+opens without application DDL. Use a dedicated schema per index.
 
-Network metadata uses `chain_id` (`NUMERIC(20,0)`, full `u64`) and configured
-`network_name` (`TEXT`). Block positions use `BIGINT`, up to `i64::MAX`.
-Block status uses `SMALLINT`: `1 = canonical`, `0 = orphaned`. Core pointer,
-continuity and writer checks run in Rust; the core schema has no SQL `CHECK`
-constraints.
+Core types: chain ID is `NUMERIC(20,0)` (full `u64`); positions are `BIGINT`
+(up to `i64::MAX`); status is `SMALLINT` (`1` canonical, `0` orphaned).
 
 ## Block processing and rollback
 
-Handlers run outside the write transaction. The block-local entity state lazily
-loads application entities and stages changes in memory; later events in the same
-block observe earlier changes. Entities pass between handlers and storage as
-serde/JSON values. Handler failure discards pending changes.
-
-The store validates the expected pointer and continuity, records the block,
-calls `apply_block`, then publishes progress and commits. On rollback it validates
-the exact head, calls `revert_block`, marks the block orphaned and restores progress.
-Application SQL errors or cancellation before commit undo both business writes
-and metadata changes. Version history must survive a writer/process restart.
-
-The [ERC20 schema](../../examples/erc20/src/schema.sql) uses `INT8RANGE`
-versions for balances/accounts and `BIGINT` creation positions for immutable
-entities. Update closes a version and inserts its successor; deletion only closes
-a version. Rollback deletes versions created in the reverted block and reopens
-previous ranges. Storage calls its versioning functions inside the writer
-transaction. The
-[Uniswap example](../../examples/uniswap-v3/src/schema.sql) implements the same
-storage contract with different native event and counter tables.
+Handlers stage changes before the write transaction. The store validates the
+pointer and commits business writes, canonical metadata and progress together.
+Application SQL failures roll back the transition. The application owns history
+and rollback rules; see [Storage](../../docs/storage.md#history-model) and the
+[ERC20 schema](../../examples/erc20/src/schema.sql).
 
 ## Application SQL queries
 
-Applications and query services use ordinary SQLx pools or SQL clients. To make
-several related queries observe one committed state, open a PostgreSQL
-repeatable-read, read-only transaction in the application:
+Use your own SQLx pool or SQL client. Related reads can share one snapshot:
 
-```rust,ignore
-let pool = sqlx::PgPool::connect(&database_url).await?;
-let mut tx = pool.begin().await?;
-sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
-    .execute(&mut *tx).await?;
-sqlx::query("SET LOCAL search_path TO erc20_holders, pg_catalog")
-    .execute(&mut *tx).await?;
-let progress: Option<i64> = sqlx::query_scalar(
-    "SELECT latest_block_number FROM networks WHERE singleton",
-).fetch_one(&mut *tx).await?;
-let balances: Vec<(String, String)> = sqlx::query_as(
-    "SELECT id, value_exact::text FROM erc20_balance WHERE block_range @> $1",
-).bind(10_i64).fetch_all(&mut *tx).await?;
-// Related entity/progress reads use this same transaction.
-tx.commit().await?;
+```sql
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL search_path TO erc20_holders, pg_catalog;
+SELECT latest_block_number FROM networks WHERE singleton;
+SELECT id, value_exact FROM erc20_balance WHERE block_range @> 10::bigint;
+COMMIT;
 ```
 
-Applications choose query isolation, pagination, filters and historical block
-positions. The [ERC20 balances_at function](../../examples/erc20/src/storage.rs)
-shows a typed SQL query against versioned balances.
+The [ERC20 balances_at helper](../../examples/erc20/src/storage.rs) provides a
+typed historical query. Applications choose isolation, pagination and filters.
 
 ## Verification
 
-Database tests require a dedicated `RAVEN_TEST_DATABASE_URL`. They create and
-drop unique test schemas:
-
-```sh
-cargo test -p raven-postgres --test store --locked --offline -- --ignored
-cargo test -p raven-postgres --test sql --locked --offline -- --ignored
-```
-
-Coverage includes writer ownership, expected pointers, cancellation, partial
-write failure, failed application rollback, restart/replay, BIGINT positions and
-application-owned read transactions. Entity version and historical query rules
-are tested in the examples. See the [local acceptance workflow](../../examples/README.md#local-acceptance).
+See [database test commands](../../docs/testing.md#workspace-tests) and
+[local acceptance](../../examples/README.md#local-acceptance). Database tests create
+and drop isolated schemas and cover writer ownership, pointers, atomic failure,
+cancellation, restart/replay and query snapshots.

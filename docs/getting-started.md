@@ -1,45 +1,31 @@
 # Getting started
 
-Raven is currently a workspace of local Rust crates. Add the crates as path dependencies, or start by copying the structure of the [ERC20 example](https://github.com/nivek3/raven-rs/tree/main/examples/erc20).
+Use the workspace crates as local path dependencies. The
+[ERC20 example](https://github.com/nivek3/raven-rs/tree/main/examples/erc20)
+is the smallest complete mapping.
 
 ## Run the ERC20 example from this workspace
 
-From the workspace root, inspect the complete option set first:
+Replace the placeholders below. Use a dedicated schema and a start block that
+includes the token's complete Transfer history:
 
 ```sh
-cargo run -p raven-example-erc20 -- --help
+export RAVEN_RPC_URL="<rpc-url>"
+export RAVEN_DATABASE_URL="<database-url>"
+export RAVEN_SCHEMA="<dedicated-schema>"
+export RAVEN_NETWORK_NAME="<network-name>"
+export RAVEN_TOKEN="<erc20-address>"
+export RAVEN_START_BLOCK="<first-required-block>"
+cargo run -p raven-example-erc20 --locked
 ```
 
-Provide your own RPC and database configuration through the environment. Set
-`TOKEN_ADDRESS` and `START_BLOCK` to the ERC20 contract and a start height that
-includes all history required by the projection. Choose a dedicated, unused
-PostgreSQL schema for this index and a network name appropriate to the source.
+For all options, run `cargo run -p raven-example-erc20 -- --help`.
 
-```sh
-export RAVEN_RPC_URL="<your-rpc-url>"
-export RAVEN_DATABASE_URL="<your-database-url>"
-export TOKEN_ADDRESS="<erc20-address>"
-export START_BLOCK="<first-required-block>"
+## Build a pipeline
 
-RAVEN_TOKEN="$TOKEN_ADDRESS" \
-RAVEN_START_BLOCK="$START_BLOCK" \
-RAVEN_SCHEMA="<dedicated-schema>" \
-RAVEN_NETWORK_NAME="<network-name>" \
-  cargo run -p raven-example-erc20 --locked
-```
-
-The sample pipeline below is a framework fragment. `store`,
-`transfer_handler`, `token_address`, `rpc_url`, and `start_block` stand for
-application configuration and components; it is not a complete executable by
-itself.
-
-The smallest useful index has five pieces:
-
-1. An Alloy event definition and a `LogParser`.
-2. A datasource configured to acquire the data the parser needs.
-3. A handler that changes application entities.
-4. A `ChainStore`, commonly `PostgresChainStore` with an application `PostgresStorage` implementation.
-5. A `Pipeline` that connects them and selects a start and finality policy.
+Define an Alloy event, configure a source, implement a handler and
+[application storage](storage.md), then register them. This fragment assumes your
+configuration, `store` and `transfer_handler`:
 
 ```rust,ignore
 use raven_engine::{CancellationToken, FinalityPolicy};
@@ -62,10 +48,10 @@ let mut pipeline = Pipeline::builder()
 pipeline.run().await?;
 ```
 
-This example uses `parser.filter()` to configure the source. Applications can also configure the source directly, such as selecting every log from one contract for several event parsers. The application must ensure the source covers all registered parsers' needs; `Pipeline` does not configure or check acquisition filters. See [Acquisition filters and parser matching](datasources.md#acquisition-filters-and-parser-matching) for the responsibility split and optional filter merging.
+The source must cover every parser's needs. `parser.filter()` and filter merging
+are optional configuration helpers; see [filter ownership](datasources.md#acquisition-filters-and-parser-matching).
+Starting late requires bootstrapped state or produces a partial projection.
+`Confirmations(12)` permits block 88 at head 100; it delays processing without
+replacing canonical checks or rollback.
 
-Choose `start_block` at or before the first event needed to derive correct state. Starting after contract discovery or creation events gives a partial projection unless the application explicitly imports the missing state.
-
-`FinalityPolicy::Confirmations(12)` means a head at height 100 permits block 88. It is an ingestion delay, not a replacement for canonical checks and rollback.
-
-The next steps are [Entities](entities.md), [Storage](storage.md), and [Datasources](datasources.md).
+Next: [Entities](entities.md), [Concepts](concepts.md), and [Configuration](configuration.md).

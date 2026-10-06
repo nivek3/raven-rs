@@ -1,211 +1,91 @@
 # Local Testkit
 
-`raven-testkit` starts its own local Anvil instances and example indexers. It retains
-each run's PostgreSQL schemas in the database specified by `RAVEN_DATABASE_URL`.
-It does not connect to mainnet or delete the database or schemas it creates.
-
-Run commands from the workspace root. Install Rust, Cargo, Foundry (`forge`, `cast`,
-`anvil`), and `psql` locally. The Rust dependencies and Solidity 0.8.30 compiler must
-also be available locally for offline execution.
+Local Anvil/PostgreSQL acceptance for both examples. Run from the workspace root
+with Rust/Cargo, Foundry (`forge`, `cast`, `anvil`), `psql`, cached Rust dependencies
+and Solidity 0.8.30 available. Builds run offline; no mainnet RPC or fork is used.
 
 ## Configuration
 
-`raven-testkit` reads the workspace root `.env` file and `RAVEN_DATABASE_URL` from
-the environment. Configure a dedicated local test database in the workspace `.env`.
-Do not put connection strings or passwords in this document or commit them to the
-repository.
+Set `RAVEN_DATABASE_URL` in the workspace `.env` or environment to an existing,
+dedicated test database. Do not execute `.env` with `source` or commit credentials.
+Create the database once if needed:
 
-If your shell already has a local database connection variable, map it explicitly
-for this command:
+```sh
+createdb -h <host> -p <port> -U <user> --password <database>
+```
+
+The testkit preserves the database and previous runs. Full verification retains
+four mapping schemas: `erc20`, `uniswap_v3`, `erc20_clean`, `uniswap_v3_clean`,
+each with a unique run prefix. Database regression tests create/drop their own
+temporary schemas.
+
+## Running the Testkit
 
 ```sh
 RAVEN_DATABASE_URL="$LOCAL_DATABASE_URL" \
   cargo run -p raven-testkit --locked --offline -- verify
 ```
 
-Do not run `source .env`: dotenv files should not be executed as shell scripts.
-The testkit records the actual database name in the report's `database` field.
+Use the appropriate subcommand:
 
-The connection must point to an existing database. On a new setup, create the
-dedicated test database once. `--password` prompts for the password interactively:
+| Command | Coverage |
+| --- | --- |
+| `verify` | Workspace tests/builds, ignored PostgreSQL/Uniswap tests, both indexers, history, restart, reorg and clean replay |
+| `erc20-rollback` | ERC20 fixture/indexer build and automatic same-height rollback; skips workspace tests |
+| `official-v3-smoke` | Official V3 contracts, day/hour swaps and same-height fork; no indexer, PostgreSQL or workspace tests |
 
-```sh
-createdb -h <host> -p <port> -U <user> --password <database>
-```
-
-Subsequent runs reuse this database. Each `verify` run creates four new, separate
-schemas, preserving existing data and schemas from previous runs.
-
-## Running the Testkit
-
-Full verification runs the workspace's registered regular Rust tests and builds
-the examples. It then explicitly runs the ignored PostgreSQL store/application
-SQL tests and Uniswap native storage tests, followed by local ERC20 and Uniswap
-indexing, restart, and same-height reorg checks:
-
-```sh
-cargo run -p raven-testkit --locked --offline -- verify
-```
-
-The regular `cargo test --workspace --all-targets` stage skips `#[ignore]` tests.
-The `verify` command subsequently runs the `raven-postgres` store, application SQL,
-and Uniswap storage tests separately with `--ignored`, using the dedicated
-PostgreSQL database. Only `status: "passed"` in the report confirms that the full
-workflow completed successfully.
-
-To run only the automatic ERC20 rollback demonstration:
-
-```sh
-cargo run -p raven-testkit --locked --offline -- erc20-rollback
-```
-
-This command builds only the ERC20 example and local fixture, without running the
-workspace test suite. Starting from an Anvil snapshot, it indexes a branch with a
-transfer to Account 1, reverts Anvil, and creates a replacement branch at the same
-height with a transfer to Account 2. It verifies that restarting the indexer removes
-orphaned versions and transfers.
-
-To check only the deployment and lifecycle of the pinned official Uniswap V3
-contracts, swaps across day/hour boundaries, and a same-height fork, without
-running the Rust workspace tests, starting an indexer, or connecting to PostgreSQL:
-
-```sh
-cargo run -p raven-testkit --locked --offline -- official-v3-smoke
-```
-
-All three commands start their own Anvil instances. Full verification and rollback
-also start their own indexers. When a command finishes, these managed processes
-stop and the generated schemas remain available.
+All commands start owned Anvil processes; the first two also start indexers.
+Managed processes stop afterward and mapping schemas remain. Only report
+`status: "passed"` confirms success.
 
 ## Reports and Logs
 
-At the end, the command prints:
+The printed temporary directory contains process logs and a JSON report:
 
-```text
-Testkit report and process logs: <temporary-directory>/<report-name>.json
-```
+| Command | Report | Schema fields |
+| --- | --- | --- |
+| `verify` | `report.json` | `schemas.erc20`, `schemas.uniswap_v3`, `schemas.erc20_clean`, `schemas.uniswap_v3_clean` |
+| `erc20-rollback` | `rollback-report.json` | `schema`, `clean_schema` |
+| `official-v3-smoke` | `official-v3-smoke-report.json` | None |
 
-Save this path as `REPORT`. Full verification writes `report.json`, rollback writes
-`rollback-report.json`, and the contract smoke command writes
-`official-v3-smoke-report.json`.
-The same temporary directory contains output logs from Rust, Foundry, Anvil,
-indexers, and queries.
-
-The full verification report contains `status`, `checks`, `database`,
-`database_retained`, `postgres_version`, `schemas`, `canonical_block`,
-`canonical_hash`, `event_types`, `mined_receipts`, `token_entities`, and
-`pool_entities`. The schema names are stored under `erc20`, `uniswap_v3`,
-`erc20_clean`, and `uniswap_v3_clean` in `schemas`.
-
-The rollback report uses `schema`, `clean_schema`, `token`, and `stages`. Each stage
-contains `stage`, `block`, `account_0`, `account_1`, `account_2`, and `total_supply`;
-the report also includes `canonical_block`, `canonical_hash`, and `orphan_hash`.
-The contract-only smoke report has no database or schema fields. It records the
-`fixture`, Factory/Pool/position manager/router addresses, starting block, orphaned
-pool, canonical block, and receipt count.
-
-Use Python's standard library to read the schema names generated by full
-verification:
+Database reports identify the actual `database`. Rollback includes balance
+`stages` and canonical/orphan hashes; the smoke report records contract addresses
+and receipts. Inspect a report with:
 
 ```sh
-REPORT=/tmp/raven-indexing-.../report.json
-ERC20_SCHEMA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schemas"]["erc20"])' "$REPORT")
-UNISWAP_SCHEMA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schemas"]["uniswap_v3"])' "$REPORT")
-python3 -m json.tool "$REPORT"
-```
-
-For rollback, read the schema name as follows:
-
-```sh
-REPORT=/tmp/raven-indexing-.../rollback-report.json
-ERC20_SCHEMA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"])' "$REPORT")
+python3 -m json.tool /tmp/raven-indexing-.../report.json
 ```
 
 ## Querying Retained Schemas
 
-The following commands assume that `ERC20_SCHEMA` and `UNISWAP_SCHEMA` have been
-read from the report as shown above. Connect a PostgreSQL client to the same
-database using your local database configuration. `--password` makes `psql` prompt
-for the password interactively, avoiding a connection URL in command-line
-arguments. Once in `psql`, set the search path to the schema from the report:
+Read the schema name from the report and connect to that report's database:
 
 ```sh
-psql -h <host> -p <port> -U <user> -d <database> --password \
-  -v schema="$ERC20_SCHEMA"
+SCHEMA="<schema-from-report>"
+psql -h <host> -p <port> -U <user> -d <database> --password -v schema="$SCHEMA"
 ```
+
+Inside `psql`, query ERC20 state and progress:
 
 ```sql
 SET search_path TO :"schema", pg_catalog;
+SELECT account, value_exact, block_range FROM erc20_balance
+WHERE upper_inf(block_range) ORDER BY account NULLS LAST;
+SELECT id, "from", "to", value_exact FROM erc20_transfer ORDER BY block_number, id;
+SELECT number, hash, status FROM blocks ORDER BY number, status;
+SELECT chain_id, start_block, latest_block_number, latest_block_hash FROM networks;
 ```
 
-The `psql` variable `schema` comes from the shell's `ERC20_SCHEMA`, so there is no
-need to enter or quote the generated schema name manually. Query current balances
-and supply (the supply row has `account = NULL`), historical versions, Transfer
-events, and canonical progress:
-
-```sql
-SELECT account, value_exact, value, block_range
-FROM erc20_balance
-WHERE upper_inf(block_range)
-ORDER BY account NULLS LAST;
-
-SELECT account, value_exact, block_range
-FROM erc20_balance
-ORDER BY account NULLS LAST, lower(block_range);
-
-SELECT id, "from", "to", value_exact, transaction, block_number
-FROM erc20_transfer
-ORDER BY block_number, id;
-
-SELECT number, hash::text, parent_hash::text, status
-FROM blocks
-ORDER BY number, status;
-
-SELECT chain_id, network_name, start_block, latest_block_number, latest_block_hash::text
-FROM networks;
-```
-
-Exit and reconnect to `psql` with the Uniswap schema to query pools, positions,
-immutable events, version history, and progress:
-
-```sh
-psql -h <host> -p <port> -U <user> -d <database> --password \
-  -v schema="$UNISWAP_SCHEMA"
-```
+Reconnect with the Uniswap schema for pools, positions and swaps:
 
 ```sql
 SET search_path TO :"schema", pg_catalog;
-
-SELECT id, token0, token1, fee_tier, liquidity, total_value_locked_usd, block_range
-FROM pool
-WHERE upper_inf(block_range)
-ORDER BY id;
-
-SELECT id, owner, pool, liquidity, deposited_token0, deposited_token1, block_range
-FROM position
-WHERE upper_inf(block_range)
-ORDER BY id;
-
-SELECT id, pool, amount0, amount1, amount_usd, transaction, block_number, log_index
-FROM swap
-ORDER BY block_number, log_index;
-
-SELECT id, liquidity, block_range
-FROM pool
-ORDER BY id, lower(block_range);
-
-SELECT number, hash::text, parent_hash::text, status
-FROM blocks
-ORDER BY number, status;
-
-SELECT chain_id, network_name, start_block, latest_block_number, latest_block_hash::text
-FROM networks;
+SELECT id, liquidity, total_value_locked_usd FROM pool WHERE upper_inf(block_range);
+SELECT id, owner, pool, liquidity FROM position WHERE upper_inf(block_range);
+SELECT id, pool, amount0, amount1 FROM swap ORDER BY block_number, log_index;
 ```
 
-`blocks.status` is a `SMALLINT`: `1` means canonical and `0` means orphaned. Mutable
-tables such as ERC20's `account` and `erc20_balance`, and Uniswap's `pool` and
-`position`, store versions using half-open `INT8RANGE` values.
-`upper_inf(block_range)` selects the current version;
-`block_range @> <height>::bigint` selects historical state at a specific block
-height. Event tables such as `erc20_transfer`, `swap`, and `mint` store immutable
-rows identified by `block_number`.
+ERC20 supply has `account IS NULL`. Mutable rows use half-open `INT8RANGE` values:
+`upper_inf(block_range)` selects current state; `block_range @> <height>::bigint`
+selects history. Immutable rows use `block_number`. Block status is `1` canonical,
+`0` orphaned. See the example READMEs for more queries.
