@@ -59,8 +59,14 @@ Adding another parser for an event from that contract requires no filter change 
 
 ## Source correctness rules
 
+**A source must deliver complete, unique, correctly ordered updates for each exact block under its configured acquisition requirements.** The engine checks chain headers and continuity; payload completeness and ordering are the source's responsibility.
+
+Sequential acquisition must retain every block, including those with no matching updates. Concurrent RPC acquisition must assemble processing-ready batches in block order. Within each built-in EVM batch, a selected full-block update precedes logs ordered by global `log_index`; transaction indices must agree with that order. Sorting updates cannot repair a missing event or an omitted block.
+
 Configure equivalent acquisition requirements for sequential and random-access paths, otherwise recovery can replay a different payload from the original stream. The built-in crawlers keep these requirements fixed for the run.
 
 Sources must emit empty blocks where appropriate, but never use empty batches to hide acquisition errors or unavailable data. A requested hash must return that hash if it returns a batch; it must not substitute whatever block is canonical at the same height.
 
 The runner retries source observations classified as `SourceChanged`, `SourceBehind`, or `MissingBlock` by resynchronizing from committed progress. Other source errors terminate the pipeline for the caller to handle.
+
+See [Data completeness and ordering](concepts.md#data-completeness-and-ordering) and [Canonical chain and reorganization](concepts.md#canonical-chain-and-reorganization) for application-state and recovery guarantees.
