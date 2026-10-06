@@ -36,7 +36,7 @@ itself.
 The smallest useful index has five pieces:
 
 1. An Alloy event definition and a `LogParser`.
-2. A datasource configured with the parser's filter.
+2. A datasource configured to acquire the data the parser needs.
 3. A handler that changes application entities.
 4. A `ChainStore`, commonly `PostgresChainStore` with an application `PostgresStorage` implementation.
 5. A `Pipeline` that connects them and selects a start and finality policy.
@@ -62,7 +62,7 @@ let mut pipeline = Pipeline::builder()
 pipeline.run().await?;
 ```
 
-The parser filter is part of correctness: the datasource must acquire every payload registered parsers require. For multiple parsers, merge their `EvmFilter` values before constructing the datasource.
+This example uses `parser.filter()` to configure the source. Applications can also configure the source directly, such as selecting every log from one contract for several event parsers. The application must ensure the source covers all registered parsers' needs; `Pipeline` does not configure or check acquisition filters. See [Acquisition filters and parser matching](datasources.md#acquisition-filters-and-parser-matching) for the responsibility split and optional filter merging.
 
 Choose `start_block` at or before the first event needed to derive correct state. Starting after contract discovery or creation events gives a partial projection unless the application explicitly imports the missing state.
 

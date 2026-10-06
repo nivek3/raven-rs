@@ -3,7 +3,7 @@ use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
 use alloy_sol_types::SolEvent;
 use raven_engine::{EntityStore, EntityStoreExt, RavenError, RavenResult};
-use raven_evm::{LogUpdate, Parsed};
+use raven_evm::{LogUpdate, ParsedLog};
 
 use crate::{
     ExampleError,
@@ -26,7 +26,7 @@ impl<P: Provider> Mapping<P> {
     async fn position<T>(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
         token_id: U256,
         context: &Context,
     ) -> RavenResult<Option<Position>> {
@@ -83,7 +83,7 @@ impl<P: Provider> Mapping<P> {
     async fn position_fees<T>(
         &self,
         position: &mut Position,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
         token_id: U256,
     ) -> RavenResult<()> {
         if let Some(result) = self
@@ -136,7 +136,7 @@ impl<P: Provider> Mapping<P> {
     async fn position_liquidity<T>(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<T>,
+        event: &ParsedLog<T>,
         input: PositionLiquidityInput,
     ) -> RavenResult<()> {
         let PositionLiquidityInput {
@@ -186,7 +186,7 @@ impl<P: Provider> Mapping<P> {
     async fn position_collect(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<PositionManager::Collect>,
+        event: &ParsedLog<PositionManager::Collect>,
     ) -> RavenResult<()> {
         let context = self.context(event).await?;
         let Some(mut position) = self
@@ -219,7 +219,7 @@ impl<P: Provider> Mapping<P> {
     async fn position_transfer(
         &self,
         store: &mut dyn EntityStore,
-        event: &Parsed<PositionManager::Transfer>,
+        event: &ParsedLog<PositionManager::Transfer>,
     ) -> RavenResult<()> {
         let context = self.context(event).await?;
         let Some(mut position) = self

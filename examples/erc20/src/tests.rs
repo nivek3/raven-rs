@@ -58,8 +58,8 @@ fn event(
     from: Address,
     to: Address,
     amount: U256,
-) -> Parsed<Transfer> {
-    Parsed {
+) -> ParsedLog<Transfer> {
+    ParsedLog {
         value: Transfer {
             from,
             to,
@@ -67,10 +67,10 @@ fn event(
         },
         block_number,
         block_hash: B256::repeat_byte(block_number as u8),
-        transaction_hash: Some(B256::repeat_byte(block_number as u8 + 100)),
-        transaction_index: Some(0),
-        log_index: Some(log_index),
-        address: Some(Address::repeat_byte(0xaa)),
+        transaction_hash: B256::repeat_byte(block_number as u8 + 100),
+        transaction_index: 0,
+        log_index,
+        address: Address::repeat_byte(0xaa),
     }
 }
 
@@ -288,7 +288,7 @@ async fn reverted_metadata_defaults_are_saved_only_once() {
     let handler = TransferHandler::new(Arc::new(provider), Duration::from_secs(1));
     let mut entities = MemoryEntities::default();
     let event = event(1, 0, Address::ZERO, Address::repeat_byte(1), U256::from(1));
-    let token = event.address.unwrap();
+    let token = event.address;
     let contract = handler
         .contract(&mut entities, &event, token)
         .await
@@ -318,11 +318,11 @@ async fn invalid_abi_uses_defaults_but_rpc_errors_do_not_create_contracts() {
     let event = event(1, 0, Address::ZERO, Address::repeat_byte(1), U256::from(1));
     let mut entities = MemoryEntities::default();
     handler
-        .contract(&mut entities, &event, event.address.unwrap())
+        .contract(&mut entities, &event, event.address)
         .await
         .unwrap();
     assert_eq!(
-        entities.entity("ERC20Contract", &address_id(event.address.unwrap()))["decimals"],
+        entities.entity("ERC20Contract", &address_id(event.address))["decimals"],
         18
     );
 
@@ -330,7 +330,7 @@ async fn invalid_abi_uses_defaults_but_rpc_errors_do_not_create_contracts() {
     let mut unavailable = MemoryEntities::default();
     assert!(matches!(
         handler
-            .contract(&mut unavailable, &event, event.address.unwrap())
+            .contract(&mut unavailable, &event, event.address)
             .await,
         Err(RavenError::Source(_))
     ));
@@ -368,7 +368,7 @@ async fn handler_reads_metadata_and_timestamp_then_reuses_them_for_the_same_tran
     let handler = TransferHandler::new(Arc::new(provider), Duration::from_secs(1));
     let mut entities = MemoryEntities::default();
     handler.handle(&mut entities, &first).await.unwrap();
-    let token = address_id(first.address.unwrap());
+    let token = address_id(first.address);
     assert_eq!(
         entities.entity("ERC20Contract", &token)["name"],
         "Test Token"

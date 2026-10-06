@@ -12,7 +12,7 @@ use bigdecimal::{
     num_bigint::{BigInt, Sign},
 };
 use raven_engine::{EngineError, EntityStore, EntityStoreExt, Handler, RavenError, RavenResult};
-use raven_evm::Parsed;
+use raven_evm::ParsedLog;
 
 use crate::{
     ExampleError, Transfer,
@@ -72,7 +72,7 @@ impl<P: Provider> TransferHandler<P> {
     async fn contract(
         &self,
         entities: &mut dyn EntityStore,
-        event: &Parsed<Transfer>,
+        event: &ParsedLog<Transfer>,
         token: Address,
     ) -> RavenResult<ERC20Contract> {
         let id = address_id(token);
@@ -106,7 +106,7 @@ impl<P: Provider> TransferHandler<P> {
     async fn timestamp(
         &self,
         entities: &mut dyn EntityStore,
-        event: &Parsed<Transfer>,
+        event: &ParsedLog<Transfer>,
         transaction_id: &str,
     ) -> RavenResult<u64> {
         if let Some(transaction) = entities.load::<Transaction>(transaction_id).await? {
@@ -137,19 +137,15 @@ impl<P: Provider> TransferHandler<P> {
 }
 
 #[async_trait]
-impl<P: Provider> Handler<Parsed<Transfer>> for TransferHandler<P> {
-    /// Applies one parsed Transfer after requiring its canonical log metadata.
+impl<P: Provider> Handler<ParsedLog<Transfer>> for TransferHandler<P> {
+    /// Applies one parsed Transfer using its required canonical log metadata.
     async fn handle(
         &self,
         entities: &mut dyn EntityStore,
-        event: &Parsed<Transfer>,
+        event: &ParsedLog<Transfer>,
     ) -> RavenResult<()> {
-        let token = event.address.ok_or(ExampleError::MissingMetadata)?;
-        let transaction_id = event
-            .transaction_hash
-            .ok_or(ExampleError::MissingMetadata)?
-            .to_string();
-        event.log_index.ok_or(ExampleError::MissingMetadata)?;
+        let token = event.address;
+        let transaction_id = event.transaction_hash.to_string();
         let contract = self.contract(entities, event, token).await?;
         let timestamp = self.timestamp(entities, event, &transaction_id).await?;
         apply_transfer(entities, event, &contract, timestamp).await
@@ -172,15 +168,12 @@ async fn save_contract(
 /// Writes the transaction and transfer entities, then updates affected balances.
 async fn apply_transfer(
     entities: &mut dyn EntityStore,
-    event: &Parsed<Transfer>,
+    event: &ParsedLog<Transfer>,
     contract: &ERC20Contract,
     timestamp: u64,
 ) -> RavenResult<()> {
-    let transaction_id = event
-        .transaction_hash
-        .ok_or(ExampleError::MissingMetadata)?
-        .to_string();
-    let log_index = event.log_index.ok_or(ExampleError::MissingMetadata)?;
+    let transaction_id = event.transaction_hash.to_string();
+    let log_index = event.log_index;
     let transaction = Transaction {
         id: transaction_id.clone(),
         timestamp: timestamp.to_string(),
