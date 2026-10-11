@@ -8,7 +8,7 @@ use crate::{
         TokenHourData, UniswapDayData,
     },
     handlers::{Context, load},
-    math::{integer, round34},
+    math::round34,
 };
 
 pub(crate) struct Metrics {
@@ -81,12 +81,12 @@ fn update_pool_day(value: &mut PoolDayData, pool: &Pool, metrics: Option<&Metric
     value.fee_growth_global0_x128 = pool.fee_growth_global0_x128.clone();
     value.fee_growth_global1_x128 = pool.fee_growth_global1_x128.clone();
     value.tvl_usd = pool.total_value_locked_usd.clone();
-    value.tx_count = value.tx_count.clone() + integer("1");
+    value.tx_count += BigDecimal::from(1);
     if let Some(metrics) = metrics {
-        value.volume_token0 = round34(value.volume_token0.clone() + metrics.amount0.clone());
-        value.volume_token1 = round34(value.volume_token1.clone() + metrics.amount1.clone());
-        value.volume_usd = round34(value.volume_usd.clone() + metrics.usd.clone());
-        value.fees_usd = round34(value.fees_usd.clone() + metrics.fees.clone());
+        value.volume_token0 = round34(&value.volume_token0 + &metrics.amount0);
+        value.volume_token1 = round34(&value.volume_token1 + &metrics.amount1);
+        value.volume_usd = round34(&value.volume_usd + &metrics.usd);
+        value.fees_usd = round34(&value.fees_usd + &metrics.fees);
     }
 }
 
@@ -108,12 +108,12 @@ fn update_pool_hour(value: &mut PoolHourData, pool: &Pool, metrics: Option<&Metr
     value.fee_growth_global0_x128 = pool.fee_growth_global0_x128.clone();
     value.fee_growth_global1_x128 = pool.fee_growth_global1_x128.clone();
     value.tvl_usd = pool.total_value_locked_usd.clone();
-    value.tx_count = value.tx_count.clone() + integer("1");
+    value.tx_count += BigDecimal::from(1);
     if let Some(metrics) = metrics {
-        value.volume_token0 = round34(value.volume_token0.clone() + metrics.amount0.clone());
-        value.volume_token1 = round34(value.volume_token1.clone() + metrics.amount1.clone());
-        value.volume_usd = round34(value.volume_usd.clone() + metrics.usd.clone());
-        value.fees_usd = round34(value.fees_usd.clone() + metrics.fees.clone());
+        value.volume_token0 = round34(&value.volume_token0 + &metrics.amount0);
+        value.volume_token1 = round34(&value.volume_token1 + &metrics.amount1);
+        value.volume_usd = round34(&value.volume_usd + &metrics.usd);
+        value.fees_usd = round34(&value.fees_usd + &metrics.fees);
     }
 }
 
@@ -171,9 +171,9 @@ pub(crate) async fn update(
     data.tvl_usd = factory.total_value_locked_usd;
     data.tx_count = factory.tx_count;
     if let Some(metrics) = metrics {
-        data.volume_eth = round34(data.volume_eth.clone() + metrics.eth.clone());
-        data.volume_usd = round34(data.volume_usd.clone() + metrics.usd.clone());
-        data.fees_usd = round34(data.fees_usd.clone() + metrics.fees.clone());
+        data.volume_eth = round34(&data.volume_eth + &metrics.eth);
+        data.volume_usd = round34(&data.volume_usd + &metrics.usd);
+        data.fees_usd = round34(&data.fees_usd + &metrics.fees);
     }
     store.save(&data).await?;
 
@@ -266,12 +266,11 @@ fn update_token_day(
     value.total_value_locked = token.total_value_locked.clone();
     value.total_value_locked_usd = token.total_value_locked_usd.clone();
     if let (Some(metrics), Some(amount)) = (metrics, amount) {
-        value.volume = round34(value.volume.clone() + amount.clone());
-        value.volume_usd = round34(value.volume_usd.clone() + metrics.usd.clone());
+        value.volume = round34(&value.volume + amount);
+        value.volume_usd = round34(&value.volume_usd + &metrics.usd);
         // This aggregate uses tracked USD for untracked_volume_usd.
-        value.untracked_volume_usd =
-            round34(value.untracked_volume_usd.clone() + metrics.usd.clone());
-        value.fees_usd = round34(value.fees_usd.clone() + metrics.fees.clone());
+        value.untracked_volume_usd = round34(&value.untracked_volume_usd + &metrics.usd);
+        value.fees_usd = round34(&value.fees_usd + &metrics.fees);
     }
 }
 
@@ -294,11 +293,10 @@ fn update_token_hour(
     value.total_value_locked = token.total_value_locked.clone();
     value.total_value_locked_usd = token.total_value_locked_usd.clone();
     if let (Some(metrics), Some(amount)) = (metrics, amount) {
-        value.volume = round34(value.volume.clone() + amount.clone());
-        value.volume_usd = round34(value.volume_usd.clone() + metrics.usd.clone());
+        value.volume = round34(&value.volume + amount);
+        value.volume_usd = round34(&value.volume_usd + &metrics.usd);
         // This aggregate uses tracked USD for untracked_volume_usd.
-        value.untracked_volume_usd =
-            round34(value.untracked_volume_usd.clone() + metrics.usd.clone());
-        value.fees_usd = round34(value.fees_usd.clone() + metrics.fees.clone());
+        value.untracked_volume_usd = round34(&value.untracked_volume_usd + &metrics.usd);
+        value.fees_usd = round34(&value.fees_usd + &metrics.fees);
     }
 }

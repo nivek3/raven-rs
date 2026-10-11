@@ -164,18 +164,18 @@ impl<P: Provider> Mapping<P> {
         };
         let liquidity = integer(&liquidity.to_string());
         position.liquidity = if increase {
-            position.liquidity.clone() + liquidity
+            &position.liquidity + liquidity
         } else {
-            position.liquidity.clone() - liquidity
+            &position.liquidity - liquidity
         };
         let amount0 = units(&raw0.to_string(), &token0.decimals.to_string());
         let amount1 = units(&raw1.to_string(), &token1.decimals.to_string());
         if increase {
-            position.deposited_token0 = round34(position.deposited_token0.clone() + amount0);
-            position.deposited_token1 = round34(position.deposited_token1.clone() + amount1);
+            position.deposited_token0 = round34(&position.deposited_token0 + amount0);
+            position.deposited_token1 = round34(&position.deposited_token1 + amount1);
         } else {
-            position.withdrawn_token0 = round34(position.withdrawn_token0.clone() + amount0);
-            position.withdrawn_token1 = round34(position.withdrawn_token1.clone() + amount1);
+            position.withdrawn_token0 = round34(&position.withdrawn_token0 + amount0);
+            position.withdrawn_token1 = round34(&position.withdrawn_token1 + amount1);
         }
         self.position_fees(&mut position, event, token_id).await?;
         store.save(&position).await?;
@@ -204,10 +204,8 @@ impl<P: Provider> Mapping<P> {
                 &token0.decimals.to_string(),
             );
             // The indexed rule adds amount0/decimals0 to both fee fields.
-            position.collected_fees_token0 =
-                round34(position.collected_fees_token0.clone() + amount.clone());
-            position.collected_fees_token1 =
-                round34(position.collected_fees_token1.clone() + amount);
+            position.collected_fees_token0 = round34(&position.collected_fees_token0 + &amount);
+            position.collected_fees_token1 = round34(&position.collected_fees_token1 + amount);
         }
         self.position_fees(&mut position, event, event.value.tokenId)
             .await?;

@@ -79,6 +79,60 @@ fn cached_block(
         .tx_hash();
     (block, tx)
 }
+
+#[tokio::test]
+async fn context_selects_transaction_by_index_and_rejects_invalid_positions() {
+    use alloy_primitives::{Address, B256};
+    use raven_engine::RavenError;
+
+    let mapping = mapping();
+    let hash = B256::repeat_byte(3);
+    let origin = Address::repeat_byte(2);
+    let (mut block, first_hash) = cached_block(hash, 10, 86_400, origin, 7);
+    let first = block.transactions.as_transactions().unwrap()[0].clone();
+    let mut second = serde_json::to_value(&first).unwrap();
+    let second_hash = B256::repeat_byte(4);
+    second["hash"] = json!(second_hash);
+    second["transactionIndex"] = json!("0x1");
+    second["gasPrice"] = json!("0x9");
+    block.transactions =
+        BlockTransactions::Full(vec![first, serde_json::from_value(second).unwrap()]);
+    *mapping.block.lock().await = Some((hash, block));
+
+    let mut event = raven_evm::LogUpdate {
+        log: alloy_primitives::Log::new_unchecked(origin, vec![], Default::default()),
+        block_number: 10,
+        block_hash: hash,
+        transaction_hash: second_hash,
+        transaction_index: 1,
+        log_index: 5,
+    }
+    .parsed(());
+    let context = mapping.context(&event).await.unwrap();
+    assert_eq!(context.transaction_hash, second_hash.to_string());
+    assert_eq!(context.gas_price, integer("9"));
+    assert_eq!(context.origin, origin.to_string().to_lowercase());
+    assert_eq!(context.timestamp, 86_400);
+
+    for index in [0, 2, u64::MAX] {
+        event.transaction_index = index;
+        assert!(matches!(
+            mapping.context(&event).await,
+            Err(RavenError::Handler(error))
+                if matches!(
+                    error.downcast_ref::<crate::ExampleError>(),
+                    Some(crate::ExampleError::MissingMetadata)
+                )
+        ));
+    }
+    event.transaction_index = 0;
+    event.transaction_hash = first_hash;
+    assert_eq!(
+        mapping.context(&event).await.unwrap().gas_price,
+        integer("7")
+    );
+}
+
 struct RpcFixture {
     task: tokio::task::JoinHandle<()>,
     requests: Arc<tokio::sync::Mutex<Vec<Value>>>,

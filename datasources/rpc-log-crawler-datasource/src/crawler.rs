@@ -207,9 +207,8 @@ impl<T: Provider> RpcLogCrawler<T> {
             self.logs_in_range(start, end),
         )?;
 
-        let mut headers = Vec::with_capacity(blocks.len());
+        let mut headers: Vec<LiteBlockHeader> = Vec::with_capacity(blocks.len());
         let mut canonical_hashes = BTreeMap::new();
-        let mut previous: Option<LiteBlockHeader> = None;
         for (offset, block) in blocks.iter().enumerate() {
             let number = start
                 .checked_add(u64::try_from(offset).map_err(|_| PositionError::HeightOverflow)?)
@@ -218,17 +217,13 @@ impl<T: Provider> RpcLogCrawler<T> {
             if header.number != number {
                 return Err(EngineError::InvalidBlock.into());
             }
-            if previous
-                .as_ref()
-                .is_some_and(|parent| !header.extends(parent))
-            {
+            if headers.last().is_some_and(|parent| !header.extends(parent)) {
                 return Err(EngineError::SourceChanged.into());
             }
             canonical_hashes.insert(number, header.hash);
-            previous = Some(header.clone());
             headers.push(header);
         }
-        if previous.as_ref() != Some(&anchor) {
+        if headers.last() != Some(&anchor) {
             return Err(EngineError::SourceChanged.into());
         }
 

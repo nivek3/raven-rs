@@ -137,12 +137,14 @@ impl<P: Provider> Mapping<P> {
             *cached = Some((event.block_hash, block));
         }
         let block = &cached.as_ref().ok_or(EngineError::MissingBlock)?.1;
+        let index =
+            usize::try_from(event.transaction_index).map_err(|_| ExampleError::MissingMetadata)?;
         let transaction = block
             .transactions
             .as_transactions()
             .ok_or(ExampleError::MissingMetadata)?
-            .iter()
-            .find(|transaction| *transaction.inner.tx_hash() == transaction_hash)
+            .get(index)
+            .filter(|transaction| *transaction.inner.tx_hash() == transaction_hash)
             .ok_or(ExampleError::MissingMetadata)?;
         Ok(Context {
             timestamp: block.header.inner.timestamp,
@@ -437,7 +439,7 @@ impl<P: Provider> Mapping<P> {
         );
         pool.total_value_locked_eth = eth.clone();
         pool.total_value_locked_usd = round34(eth.clone() * bundle.eth_price_usd.clone());
-        factory.total_value_locked_eth = round34(factory.total_value_locked_eth.clone() + eth);
+        factory.total_value_locked_eth = round34(&factory.total_value_locked_eth + eth);
         factory.total_value_locked_usd =
             round34(factory.total_value_locked_eth.clone() * bundle.eth_price_usd.clone());
     }
@@ -492,8 +494,8 @@ impl<P: Provider> Mapping<P> {
         } else {
             round34(BigDecimal::from(0) - amount1.clone())
         };
-        token0.total_value_locked = round34(token0.total_value_locked.clone() + delta0.clone());
-        token1.total_value_locked = round34(token1.total_value_locked.clone() + delta1.clone());
+        token0.total_value_locked = round34(&token0.total_value_locked + &delta0);
+        token1.total_value_locked = round34(&token1.total_value_locked + &delta1);
         // Mint/Burn round the USD price before multiplying by the balance.
         for token in [&mut token0, &mut token1] {
             token.total_value_locked_usd = round34(
@@ -501,8 +503,8 @@ impl<P: Provider> Mapping<P> {
                     * round34(token.derived_eth.clone() * bundle.eth_price_usd.clone()),
             );
         }
-        pool.total_value_locked_token0 = round34(pool.total_value_locked_token0.clone() + delta0);
-        pool.total_value_locked_token1 = round34(pool.total_value_locked_token1.clone() + delta1);
+        pool.total_value_locked_token0 = round34(&pool.total_value_locked_token0 + delta0);
+        pool.total_value_locked_token1 = round34(&pool.total_value_locked_token1 + delta1);
         factory.tx_count += BigDecimal::from(1);
         pool.tx_count += BigDecimal::from(1);
         token0.tx_count += BigDecimal::from(1);
@@ -663,38 +665,34 @@ impl<P: Provider> Mapping<P> {
         let fees_eth = round34(round34(eth.clone() * fee_tier.clone()) / decimal("1000000"));
         let fees = round34(round34(tracked.clone() * fee_tier) / decimal("1000000"));
         factory.tx_count += BigDecimal::from(1);
-        factory.total_volume_eth = round34(factory.total_volume_eth.clone() + eth.clone());
-        factory.total_volume_usd = round34(factory.total_volume_usd.clone() + tracked.clone());
-        factory.untracked_volume_usd =
-            round34(factory.untracked_volume_usd.clone() + untracked.clone());
-        factory.total_fees_eth = round34(factory.total_fees_eth.clone() + fees_eth);
-        factory.total_fees_usd = round34(factory.total_fees_usd.clone() + fees.clone());
+        factory.total_volume_eth = round34(&factory.total_volume_eth + &eth);
+        factory.total_volume_usd = round34(&factory.total_volume_usd + &tracked);
+        factory.untracked_volume_usd = round34(&factory.untracked_volume_usd + &untracked);
+        factory.total_fees_eth = round34(&factory.total_fees_eth + fees_eth);
+        factory.total_fees_usd = round34(&factory.total_fees_usd + &fees);
         factory.total_value_locked_eth =
             round34(factory.total_value_locked_eth.clone() - pool.total_value_locked_eth.clone());
         pool.tx_count += BigDecimal::from(1);
-        pool.volume_token0 = round34(pool.volume_token0.clone() + abs0.clone());
-        pool.volume_token1 = round34(pool.volume_token1.clone() + abs1.clone());
-        pool.volume_usd = round34(pool.volume_usd.clone() + tracked.clone());
-        pool.untracked_volume_usd = round34(pool.untracked_volume_usd.clone() + untracked.clone());
-        pool.fees_usd = round34(pool.fees_usd.clone() + fees.clone());
+        pool.volume_token0 = round34(&pool.volume_token0 + &abs0);
+        pool.volume_token1 = round34(&pool.volume_token1 + &abs1);
+        pool.volume_usd = round34(&pool.volume_usd + &tracked);
+        pool.untracked_volume_usd = round34(&pool.untracked_volume_usd + &untracked);
+        pool.fees_usd = round34(&pool.fees_usd + &fees);
         pool.liquidity = integer(&event.value.liquidity.to_string());
         pool.tick = Some(integer(&event.value.tick.to_string()));
         pool.sqrt_price = integer(&event.value.sqrtPriceX96.to_string());
-        pool.total_value_locked_token0 =
-            round34(pool.total_value_locked_token0.clone() + amount0.clone());
-        pool.total_value_locked_token1 =
-            round34(pool.total_value_locked_token1.clone() + amount1.clone());
+        pool.total_value_locked_token0 = round34(&pool.total_value_locked_token0 + &amount0);
+        pool.total_value_locked_token1 = round34(&pool.total_value_locked_token1 + &amount1);
         for (token, amount, abs) in [
             (&mut token0, amount0.clone(), abs0.clone()),
             (&mut token1, amount1.clone(), abs1.clone()),
         ] {
             token.tx_count += BigDecimal::from(1);
-            token.volume = round34(token.volume.clone() + abs);
-            token.total_value_locked = round34(token.total_value_locked.clone() + amount);
-            token.volume_usd = round34(token.volume_usd.clone() + tracked.clone());
-            token.untracked_volume_usd =
-                round34(token.untracked_volume_usd.clone() + untracked.clone());
-            token.fees_usd = round34(token.fees_usd.clone() + fees.clone());
+            token.volume = round34(&token.volume + abs);
+            token.total_value_locked = round34(&token.total_value_locked + amount);
+            token.volume_usd = round34(&token.volume_usd + &tracked);
+            token.untracked_volume_usd = round34(&token.untracked_volume_usd + &untracked);
+            token.fees_usd = round34(&token.fees_usd + &fees);
         }
         (pool.token1_price, pool.token0_price) =
             sqrt_prices(event.value.sqrtPriceX96, &token0.decimals, &token1.decimals)?;
