@@ -1,7 +1,14 @@
 //! Decimal arithmetic that rounds each operation to 34 significant digits.
-use std::{cmp::Ordering, str::FromStr};
+use std::str::FromStr;
 
+use alloy_primitives::U160;
 use bigdecimal::BigDecimal;
+use uniswap_v3_sdk::{
+    prelude::sdk_core::prelude::{Fraction, FractionBase, Rounding, ToBig},
+    utils::Q192,
+};
+
+use crate::ExampleError;
 
 /// Parses and rounds a decimal value to the mapping precision.
 pub fn decimal(value: &str) -> BigDecimal {
@@ -22,29 +29,29 @@ pub fn round34(value: BigDecimal) -> BigDecimal {
     }
 }
 
-/// Raises a decimal base to an integer exponent with mapping precision.
-pub fn power(base: &BigDecimal, exponent: i32) -> BigDecimal {
-    match exponent.cmp(&0) {
-        Ordering::Less => {
-            let inverse = power(base, -exponent);
-            if inverse == 0 {
-                BigDecimal::from(0)
-            } else {
-                round34(BigDecimal::from(1) / inverse)
-            }
-        }
-        Ordering::Equal => BigDecimal::from(1),
-        Ordering::Greater if exponent == 1 => base.clone(),
-        _ => {
-            let half = power(base, exponent / 2);
-            let value = round34(half.clone() * half);
-            if exponent % 2 == 1 {
-                round34(value * base.clone())
-            } else {
-                value
-            }
-        }
-    }
+/// Converts the SDK's exact Q64.96 price ratio into the mapping's decimal units.
+pub(crate) fn sqrt_prices(
+    sqrt: U160,
+    decimals0: &BigDecimal,
+    decimals1: &BigDecimal,
+) -> Result<(BigDecimal, BigDecimal), ExampleError> {
+    let ratio = Fraction::new(sqrt.to_big_int().pow(2), Q192.to_big_int());
+    let inverse = if sqrt == U160::ZERO {
+        Fraction::ZERO
+    } else {
+        ratio.invert()
+    };
+    let to_decimal = |value: Fraction| {
+        value
+            .to_significant(34, Some(Rounding::RoundHalfUp))
+            .map(|value| integer(&value))
+            .map_err(|error| ExampleError::UniswapSdk(error.into()))
+    };
+    let scale = integer(&format!("1e{}", decimals0 - decimals1));
+    Ok((
+        round34(to_decimal(ratio)? * scale.clone()),
+        round34(to_decimal(inverse)? / scale),
+    ))
 }
 
 /// Converts a raw token amount into decimal token units.

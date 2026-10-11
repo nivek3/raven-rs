@@ -8,6 +8,8 @@ use raven_engine::RavenResult;
 
 use crate::{EvmError, EvmFilter};
 
+const EVENT_ID_BLOCK_SIZE: u64 = 1_000_000;
+
 pub type LiteBlockHeader = raven_engine::LiteBlockHeader<B256>;
 pub type BlockBatch = raven_engine::BlockBatch<B256, Update>;
 
@@ -29,6 +31,16 @@ pub struct LogUpdate {
     pub transaction_hash: B256,
     pub transaction_index: u64,
     pub log_index: u64,
+}
+
+/// Encodes `block_number * 1_000_000 + log_index` for one chain's canonical logs.
+/// Requires the block-global log index to be below 1,000,000.
+pub fn event_id(block_number: u64, log_index: u64) -> Result<u128, EvmError> {
+    // shortcut: reserves six log digits; widen if a supported chain reaches log index 1,000,000.
+    if log_index >= EVENT_ID_BLOCK_SIZE {
+        return Err(EvmError::EventLogIndexOutOfRange);
+    }
+    Ok(u128::from(block_number) * u128::from(EVENT_ID_BLOCK_SIZE) + u128::from(log_index))
 }
 
 impl TryFrom<RpcLog> for LogUpdate {

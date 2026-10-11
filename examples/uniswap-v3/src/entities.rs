@@ -1,6 +1,7 @@
 //! Application entities stored by the Uniswap V3 index.
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Factory {
@@ -242,7 +243,7 @@ pub struct Transaction {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Mint {
-    pub id: String,
+    pub id: u128,
     pub transaction: String,
     pub timestamp: BigDecimal,
     pub pool: String,
@@ -266,7 +267,7 @@ pub struct Mint {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Burn {
-    pub id: String,
+    pub id: u128,
     pub transaction: String,
     pub pool: String,
     pub token0: String,
@@ -289,7 +290,7 @@ pub struct Burn {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Swap {
-    pub id: String,
+    pub id: u128,
     pub transaction: String,
     pub timestamp: BigDecimal,
     pub pool: String,
@@ -562,166 +563,170 @@ pub(crate) fn new_entity(kind: &str, id: &str) -> serde_json::Value {
         _ => panic!("unknown application entity"),
     }
     .expect("entity serialization");
-    value["id"] = Value::String(id.into());
+    value["id"] = if matches!(kind, "Mint" | "Burn" | "Swap") {
+        serde_json::json!(id.parse::<u128>().expect("numeric event ID"))
+    } else {
+        Value::String(id.into())
+    };
     value
 }
 
 impl raven_engine::Entity for Factory {
     const ENTITY_NAME: &'static str = "Factory";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Bundle {
     const ENTITY_NAME: &'static str = "Bundle";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Token {
     const ENTITY_NAME: &'static str = "Token";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Pool {
     const ENTITY_NAME: &'static str = "Pool";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Tick {
     const ENTITY_NAME: &'static str = "Tick";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Position {
     const ENTITY_NAME: &'static str = "Position";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for PositionSnapshot {
     const ENTITY_NAME: &'static str = "PositionSnapshot";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Transaction {
     const ENTITY_NAME: &'static str = "Transaction";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Mint {
     const ENTITY_NAME: &'static str = "Mint";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.to_string().into()
     }
 }
 
 impl raven_engine::Entity for Burn {
     const ENTITY_NAME: &'static str = "Burn";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.to_string().into()
     }
 }
 
 impl raven_engine::Entity for Swap {
     const ENTITY_NAME: &'static str = "Swap";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.to_string().into()
     }
 }
 
 impl raven_engine::Entity for Collect {
     const ENTITY_NAME: &'static str = "Collect";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for Flash {
     const ENTITY_NAME: &'static str = "Flash";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for UniswapDayData {
     const ENTITY_NAME: &'static str = "UniswapDayData";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for PoolDayData {
     const ENTITY_NAME: &'static str = "PoolDayData";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for PoolHourData {
     const ENTITY_NAME: &'static str = "PoolHourData";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for TickHourData {
     const ENTITY_NAME: &'static str = "TickHourData";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for TickDayData {
     const ENTITY_NAME: &'static str = "TickDayData";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for TokenDayData {
     const ENTITY_NAME: &'static str = "TokenDayData";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for TokenHourData {
     const ENTITY_NAME: &'static str = "TokenHourData";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }

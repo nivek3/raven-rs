@@ -13,4 +13,4 @@ pub use error::{EvmError, PipelineError};
 pub use filter::EvmFilter;
 pub use parser::{BlockParser, LogParser, ParsedBlock, ParsedLog, Parser};
 pub use pipeline::{Pipeline, PipelineBuilder};
-pub use update::{BlockBatch, LiteBlockHeader, LogUpdate, Update, build_block_batch};
+pub use update::{BlockBatch, LiteBlockHeader, LogUpdate, Update, build_block_batch, event_id};

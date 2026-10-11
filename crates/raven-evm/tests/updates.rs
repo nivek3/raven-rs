@@ -1,8 +1,26 @@
 mod fake;
 
-use raven_evm::{EvmError, EvmFilter, Filter, Log, LogUpdate, Update, build_block_batch};
+use raven_evm::{EvmError, EvmFilter, Filter, Log, LogUpdate, Update, build_block_batch, event_id};
 
 use fake::{address, all, assert_error, block, hash, header, log};
+
+#[test]
+fn numeric_event_ids_preserve_positions_and_reject_out_of_range_indices() {
+    assert_eq!(event_id(0, 0).unwrap(), 0);
+    assert_eq!(event_id(123, 5).unwrap(), 123_000_005);
+    assert_eq!(event_id(1, 999_999).unwrap(), 1_999_999);
+    assert_eq!(event_id(2, 0).unwrap(), 2_000_000);
+    assert_eq!(
+        event_id(u64::MAX, 999_999).unwrap(),
+        18_446_744_073_709_551_615_999_999u128
+    );
+    for log_index in [1_000_000, u64::MAX] {
+        assert_eq!(
+            event_id(1, log_index),
+            Err(EvmError::EventLogIndexOutOfRange)
+        );
+    }
+}
 
 #[test]
 /// Verifies that normalization sorts deduplicates and emits full block first.

@@ -4,6 +4,7 @@ use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
 use raven_engine::{EntityStore, EntityStoreExt, RavenResult};
 use raven_evm::ParsedLog;
+use uniswap_v3_sdk::constants::FeeAmount;
 
 use crate::{
     ExampleError,
@@ -100,13 +101,11 @@ impl<P: Provider> Mapping<P> {
         let (Some(old), Some(new)) = (old, pool.tick.clone()) else {
             return Ok(());
         };
-        let spacing = match pool.fee_tier.to_i32() {
-            Some(10_000) => integer("200"),
-            Some(3_000) => integer("60"),
-            Some(500) => integer("10"),
-            Some(100) => integer("1"),
+        let fee = match pool.fee_tier.to_u32() {
+            Some(fee @ (100 | 500 | 3_000 | 10_000)) => FeeAmount::from(fee),
             _ => return Err(ExampleError::InvalidPoolState.into()),
         };
+        let spacing = integer(&fee.tick_spacing().to_string());
         let modulo = &new % &spacing;
         if modulo == integer("0") {
             self.update_tick(store, &pool.id, &new, event, context)

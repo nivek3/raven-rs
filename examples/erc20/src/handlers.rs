@@ -12,7 +12,7 @@ use bigdecimal::{
     num_bigint::{BigInt, Sign},
 };
 use raven_engine::{EngineError, EntityStore, EntityStoreExt, Handler, RavenError, RavenResult};
-use raven_evm::ParsedLog;
+use raven_evm::{ParsedLog, event_id};
 
 use crate::{
     ExampleError, Transfer,
@@ -173,7 +173,6 @@ async fn apply_transfer(
     timestamp: u64,
 ) -> RavenResult<()> {
     let transaction_id = event.transaction_hash.to_string();
-    let log_index = event.log_index;
     let transaction = Transaction {
         id: transaction_id.clone(),
         timestamp: timestamp.to_string(),
@@ -182,7 +181,7 @@ async fn apply_transfer(
     entities.save(&transaction).await?;
     let amount = BigInt::from_bytes_be(Sign::Plus, &event.value.value.to_be_bytes::<32>());
     let mut transfer = ERC20Transfer {
-        id: format!("{}-{log_index}", event.block_number),
+        id: event_id(event.block_number, event.log_index)?,
         emitter: contract.id.clone(),
         transaction: transaction_id,
         timestamp: timestamp.to_string(),

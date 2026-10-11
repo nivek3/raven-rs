@@ -397,10 +397,9 @@ impl Testkit {
                 "official V3 Swap did not preserve signed token deltas",
             )?;
         }
-        let mut ordered = Vec::new();
         for row in rows
             .iter()
-            .filter(|row| row[0] == "Swap" || row[0] == "Mint")
+            .filter(|row| row[0] == "Swap" || row[0] == "Mint" || row[0] == "Burn")
         {
             let transaction = text(&row[2]["transaction"])?;
             let transaction_row = rows
@@ -409,20 +408,6 @@ impl Testkit {
             require(
                 transaction_row.is_some(),
                 "event is missing its canonical Transaction",
-            )?;
-            let transaction_row = transaction_row.expect("checked above");
-            ordered.push((
-                text(&transaction_row[2]["blockNumber"])?.parse::<u64>()?,
-                text(&row[2]["logIndex"])?.parse::<u64>()?,
-                row,
-            ));
-        }
-        ordered.sort_by_key(|(block_number, log_index, _)| (*block_number, *log_index));
-        for (_, _, row) in ordered {
-            let transaction = text(&row[2]["transaction"])?;
-            require(
-                text(&row[1])?.starts_with(&(transaction + "#")),
-                "event ID is not derived from its canonical transaction",
             )?;
         }
         Ok(rows)

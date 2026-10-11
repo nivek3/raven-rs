@@ -2,7 +2,7 @@ use crate::{
     ChainConfig,
     entities::{Bundle, Factory, Pool, Token, new_entity},
     handlers::{Context, Mapping},
-    math::{decimal, integer, power, round34, units},
+    math::{decimal, integer, round34, sqrt_prices, units},
 };
 use alloy_provider::ProviderBuilder;
 use alloy_rpc_types_eth::{Block, BlockTransactions, Transaction};
@@ -164,13 +164,63 @@ fn decimal_prices_and_signed_units_preserve_graph_precision() {
         decimal("0.3333333333333333333333333333333333")
     );
     assert_eq!(
-        power(&decimal("1.0001"), -1),
-        decimal("0.99990000999900009999000099990001")
-    );
-    assert_eq!(
         units("123456789012345678901234567890123456789", "0"),
         decimal("123456789012345678901234567890123500000")
     );
+}
+
+#[test]
+fn sdk_prices_preserve_direction_decimal_scaling_and_tick_bounds() {
+    use alloy_primitives::U160;
+    let q96: U160 = "79228162514264337593543950336".parse().unwrap();
+    assert_eq!(
+        sqrt_prices(q96, &integer("18"), &integer("6")).unwrap(),
+        (decimal("1000000000000"), decimal("0.000000000001"))
+    );
+    assert_eq!(
+        sqrt_prices(q96, &integer("6"), &integer("18")).unwrap(),
+        (decimal("0.000000000001"), decimal("1000000000000"))
+    );
+    assert_eq!(
+        sqrt_prices(U160::ZERO, &integer("18"), &integer("6")).unwrap(),
+        (decimal("0"), decimal("0"))
+    );
+    assert_eq!(
+        sqrt_prices(
+            "79227690016757081556856826518".parse().unwrap(),
+            &integer("18"),
+            &integer("18"),
+        )
+        .unwrap(),
+        (
+            decimal("0.9999880725216051599256430981255643"),
+            decimal("1.000011927620661277813596104229921"),
+        )
+    );
+    let (_, inverse) = sqrt_prices(U160::from(1), &integer("0"), &integer("0")).unwrap();
+    assert_eq!(
+        inverse,
+        decimal("6277101735386680763835789423207666416102355444464034512896")
+    );
+    let context = Context {
+        timestamp: 1,
+        block_number: 1,
+        transaction_hash: "tx".into(),
+        log_index: 0,
+        origin: "owner".into(),
+        gas_price: integer("1"),
+    };
+    let zero = super::new_tick("pool", 0, &context).unwrap();
+    assert_eq!((zero.price0, zero.price1), (decimal("1"), decimal("1")));
+    for index in [-887_272, -1, 1, 887_272] {
+        let tick = super::new_tick("pool", index, &context).unwrap();
+        assert!(tick.price0 > 0 && tick.price1 > 0);
+        assert_eq!(tick.price0 > 1, index > 0);
+        assert_eq!(tick.price1 > 1, index < 0);
+    }
+    for index in [-887_273, 887_273, i32::MAX] {
+        assert!(super::new_tick("pool", index, &context).is_err());
+    }
 }
 
 #[test]
@@ -337,13 +387,19 @@ async fn all_official_native_entities_round_trip_and_restore_after_restart() {
     ];
     let mut originals = Vec::new();
     for kind in kinds {
-        let default_id = format!("{kind}-defaults");
+        let numeric_id = matches!(kind, "Mint" | "Burn" | "Swap");
+        let default_id = if numeric_id {
+            u128::MAX.to_string()
+        } else {
+            format!("{kind}-defaults")
+        };
         originals.push(EntityChange {
             entity_type: kind.into(),
             entity_id: default_id.clone(),
             data: Some(new_entity(kind, &default_id)),
         });
-        let mut value = new_entity(kind, kind);
+        let id = if numeric_id { "1" } else { kind };
+        let mut value = new_entity(kind, id);
         // Distinct field values detect crossed SQL columns; defaults also cover nullable fields.
         for (index, (field, data)) in value.as_object_mut().unwrap().iter_mut().enumerate() {
             if field == "id" || (kind == "Transaction" && field == "blockNumber") {
@@ -365,7 +421,7 @@ async fn all_official_native_entities_round_trip_and_restore_after_restart() {
         }
         originals.push(EntityChange {
             entity_type: kind.into(),
-            entity_id: kind.into(),
+            entity_id: id.into(),
             data: Some(value),
         });
     }
@@ -435,7 +491,7 @@ async fn all_official_native_entities_round_trip_and_restore_after_restart() {
     .await
     .unwrap();
     assert_eq!(before, after);
-    let mut invalid = new_entity("Swap", "bad");
+    let mut invalid = new_entity("Swap", "2");
     invalid["amount0"] = json!("invalid-number");
     assert!(
         store
@@ -444,7 +500,7 @@ async fn all_official_native_entities_round_trip_and_restore_after_restart() {
                 &b1,
                 vec![EntityChange {
                     entity_type: "Swap".into(),
-                    entity_id: "bad".into(),
+                    entity_id: "2".into(),
                     data: Some(invalid)
                 }]
             )
@@ -568,7 +624,7 @@ async fn malformed_untracked_pool_logs_are_ignored_before_decoding() {
 }
 
 #[tokio::test]
-/// Verifies Mint, Burn, and Swap preserve the intended USD rounding order.
+/// Verifies Mint, Burn, and Swap preserve USD rounding and unique log-based IDs.
 async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
     use alloy_primitives::{Address, B256, Bytes, Log};
     use raven_evm::LogUpdate;
@@ -639,7 +695,7 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         block_hash: hash,
         transaction_hash: tx,
         transaction_index: 0,
-        log_index: 1,
+        log_index: 11,
     };
     mapping
         .liquidity_event(
@@ -663,7 +719,7 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         &store.get("Token", "target").await.unwrap().unwrap()["totalValueLockedUSD"],
         "0.3490658503988659153847381536977226",
     );
-    event.log_index = 2;
+    event.log_index = 12;
     mapping
         .liquidity_event(
             &mut store,
@@ -685,8 +741,8 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         &store.get("Token", "target").await.unwrap().unwrap()["totalValueLockedUSD"],
         "0.338593874886899937923196009086791",
     );
-    event.log_index = 3;
-    let swap = event.parsed(crate::Swap {
+    event.log_index = 13;
+    let mut swap = event.parsed(crate::Swap {
         sender: address,
         recipient: address,
         amount0: "0".parse().unwrap(),
@@ -700,6 +756,36 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         &store.get("Token", "target").await.unwrap().unwrap()["totalValueLockedUSD"],
         "0.3385938748868999379231960090867909",
     );
+
+    let other_address = Address::repeat_byte(4);
+    let other_pool_id = other_address.to_string().to_lowercase();
+    let other_pool = Pool {
+        id: other_pool_id.clone(),
+        // Both pools reach txCount=3 in this transaction; their logs must stay distinct.
+        tx_count: integer("2"),
+        ..pool.clone()
+    };
+    store.save(&other_pool).await.unwrap();
+    swap.address = other_address;
+    swap.log_index = 14;
+    mapping.swapped(&mut store, &swap).await.unwrap();
+
+    for (kind, log_index, expected_pool) in [
+        ("Mint", 11, &pool_id),
+        ("Burn", 12, &pool_id),
+        ("Swap", 13, &pool_id),
+        ("Swap", 14, &other_pool_id),
+    ] {
+        let id = 1_000_000u128 + log_index as u128;
+        let stored = store.get(kind, &id.to_string()).await.unwrap().unwrap();
+        assert_eq!(
+            stored["id"].as_number().and_then(|id| id.as_u128()),
+            Some(id)
+        );
+        assert_eq!(stored["pool"].as_str(), Some(expected_pool.as_str()));
+        assert_decimal(&stored["logIndex"], &log_index.to_string());
+    }
+    assert_eq!(store.0.keys().filter(|(kind, _)| kind == "Swap").count(), 2);
 }
 
 #[tokio::test]
@@ -957,7 +1043,7 @@ async fn flash_updates_fee_growth_and_tick_daily_fields_keep_reference_copy_orde
         origin: id.clone(),
         gas_price: integer("1"),
     };
-    let mut tick = super::new_tick(&id, 60, &context);
+    let mut tick = super::new_tick(&id, 60, &context).unwrap();
     tick.volume_token0 = decimal("11");
     tick.volume_token1 = decimal("22");
     tick.fee_growth_outside0_x128 = integer("33");
@@ -1012,7 +1098,7 @@ async fn crossed_ticks_preserve_signed_remainder_and_update_current_tick_before_
     };
     let mut store = Memory::default();
     for index in [2, 0, -10, -9, -1010] {
-        let tick = super::new_tick(&id, index, &context);
+        let tick = super::new_tick(&id, index, &context).unwrap();
         store.save(&tick).await.unwrap();
     }
     let mut pool = Pool {

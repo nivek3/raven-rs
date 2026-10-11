@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use async_trait::async_trait;
 use raven_engine::{
@@ -16,8 +16,21 @@ struct Balance {
 impl Entity for Balance {
     const ENTITY_NAME: &'static str = "Balance";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct NumericEvent {
+    id: u128,
+}
+
+impl Entity for NumericEvent {
+    const ENTITY_NAME: &'static str = "NumericEvent";
+
+    fn id(&self) -> Cow<'_, str> {
+        self.id.to_string().into()
     }
 }
 
@@ -39,6 +52,34 @@ impl EntityStore for MemoryStore {
     async fn delete(&mut self, kind: &str, id: &str) -> RavenResult<()> {
         self.0.remove(&(kind.to_owned(), id.to_owned()));
         Ok(())
+    }
+}
+
+#[tokio::test]
+async fn numeric_ids_round_trip_without_precision_loss_and_validate_storage_keys() {
+    let mut store = MemoryStore::default();
+    let event = NumericEvent { id: u128::MAX };
+    let id = event.id().into_owned();
+    store.save(&event).await.unwrap();
+    let stored = store.get("NumericEvent", &id).await.unwrap().unwrap();
+    assert!(stored["id"].is_number());
+    assert_eq!(
+        stored["id"].as_number().and_then(|id| id.as_u128()),
+        Some(u128::MAX)
+    );
+    assert_eq!(store.load::<NumericEvent>(&id).await.unwrap(), Some(event));
+    store
+        .put("NumericEvent", "1", &json!({"id": 2}))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.load::<NumericEvent>("1").await,
+        Err(RavenError::Entity(EntityError::IdMismatch { expected, actual, .. }))
+            if expected == "1" && actual == "2"
+    ));
+    for invalid in ["-1", "340282366920938463463374607431768211456"] {
+        let value = serde_json::from_str(&format!("{{\"id\":{invalid}}}")).unwrap();
+        assert!(serde_json::from_value::<NumericEvent>(value).is_err());
     }
 }
 

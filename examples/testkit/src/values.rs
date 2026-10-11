@@ -50,7 +50,7 @@ pub(crate) fn hex_bigint(value: &str) -> Result<BigInt> {
 pub(crate) fn log_words(data: &str) -> Result<Vec<BigInt>> {
     let data = data.trim_start_matches("0x");
     require(
-        data.len().is_multiple_of(0),
+        data.len().is_multiple_of(64),
         "event data is not ABI word aligned",
     )?;
     data.as_bytes()
@@ -105,24 +105,18 @@ fn divide34(numerator: &BigDecimal, denominator: &BigDecimal) -> Result<BigDecim
     ))
 }
 
-/// Rounds a decimal to the testkit's 34-significant-digit rule.
-fn round34(value: BigDecimal) -> Result<BigDecimal> {
-    divide34(&value, &BigDecimal::from(1))
-}
-
 /// Computes reciprocal token prices from a Q96 square-root price.
 pub(crate) fn decimal34_price(
     sqrt_price_x96: &BigInt,
     decimals0: u32,
     decimals1: u32,
 ) -> Result<(BigDecimal, BigDecimal)> {
-    // Keep intermediate operations at the same 34-significant-digit precision.
-    let square = round34(BigDecimal::from(sqrt_price_x96 * sqrt_price_x96))?;
-    let denominator = round34(BigDecimal::from(BigInt::from(1) << 192usize))?;
-    let ratio = divide34(&square, &denominator)?;
-    let ratio = round34(ratio * BigDecimal::from(power10(decimals0)))?;
-    let ratio = divide34(&ratio, &BigDecimal::from(power10(decimals1)))?;
-    Ok((divide34(&BigDecimal::from(1), &ratio)?, ratio))
+    let numerator = BigDecimal::from(sqrt_price_x96 * sqrt_price_x96 * power10(decimals0));
+    let denominator = BigDecimal::from((BigInt::from(1) << 192usize) * power10(decimals1));
+    Ok((
+        divide34(&denominator, &numerator)?,
+        divide34(&numerator, &denominator)?,
+    ))
 }
 
 /// SQL numeric JSON may preserve a different scale for the same exact value.
@@ -163,6 +157,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn log_words_requires_complete_abi_words() {
+        assert_eq!(
+            log_words(&format!("0x{:064x}{:064x}", 1, 2)).unwrap(),
+            vec![BigInt::from(1), BigInt::from(2)]
+        );
+        assert!(log_words("0x").unwrap().is_empty());
+        assert!(log_words("0x01").is_err());
+        assert!(log_words(&"g".repeat(64)).is_err());
+    }
+
+    #[test]
     fn cast_call_numbers_are_text_and_tuples_preserve_booleans() {
         assert_eq!(
             call_values(serde_json::from_str("[18]").unwrap()).unwrap(),
@@ -188,7 +193,7 @@ mod tests {
     fn reference_rounds_half_up_and_keeps_uint256_exact() {
         let value = BigDecimal::from_str("12345678901234567890123456789012345").unwrap();
         assert_eq!(
-            round34(value).unwrap(),
+            divide34(&value, &BigDecimal::from(1)).unwrap(),
             BigDecimal::from_str("12345678901234567890123456789012350").unwrap()
         );
         assert_eq!(
@@ -219,5 +224,19 @@ mod tests {
         let (price0, price1) = decimal34_price(&sqrt, 18, 6).unwrap();
         assert_eq!(price0, BigDecimal::from_str("1e-12").unwrap());
         assert_eq!(price1, BigDecimal::from_str("1e12").unwrap());
+    }
+
+    #[test]
+    fn sqrt_reference_rounds_exact_ratios_once() {
+        let sqrt = BigInt::from_str("79227690016757081556856826518").unwrap();
+        let (price0, price1) = decimal34_price(&sqrt, 18, 18).unwrap();
+        assert_eq!(
+            price0,
+            BigDecimal::from_str("1.000011927620661277813596104229921").unwrap()
+        );
+        assert_eq!(
+            price1,
+            BigDecimal::from_str("0.9999880725216051599256430981255643").unwrap()
+        );
     }
 }

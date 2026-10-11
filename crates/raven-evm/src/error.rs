@@ -18,6 +18,8 @@ impl From<PipelineError> for RavenError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum EvmError {
+    #[error("log index must be less than 1000000 for numeric event IDs")]
+    EventLogIndexOutOfRange,
     #[error("a mined log is missing {0}")]
     MissingLogMetadata(&'static str),
     #[error("removed logs cannot be applied as canonical updates")]

@@ -10,13 +10,18 @@ canonical progress commit and roll back together in application-owned tables.
 | `Account` | Lowercase address | `account` / block range |
 | `ERC20Contract` | Lowercase token address | `erc20_contract` / creation block |
 | `ERC20Balance` | `token/account` or `token/totalSupply` | `erc20_balance` / block range |
-| `ERC20Transfer` | `blockNumber-logIndex` | `erc20_transfer` / creation block |
+| `ERC20Transfer` | `u128`: `block_number * 1,000,000 + log_index` | `erc20_transfer` / creation block |
 | `Transaction` | Lowercase transaction hash | `transaction` / creation block |
 
 `valueExact` is a signed arbitrary-precision integer; `value` applies token decimals
 with 34 significant digits and no floating point. Addresses/hashes are lowercase
-hexadecimal. Handler JSON uses decimal strings; SQL uses `NUMERIC` amounts,
-`INTEGER` decimals and `BIGINT` positions.
+hexadecimal. Handler JSON uses numeric Transfer IDs and decimal strings for amounts;
+SQL uses `NUMERIC` amounts, `INTEGER` decimals and `BIGINT` positions.
+
+Transfer IDs use `raven_evm::event_id`, which returns `u128` and requires the
+block-global log index to be below `1,000,000`. Entity fields use `u128`, JSON
+stores numbers with `arbitrary_precision`, and SQL IDs use `NUMERIC(39,0)`.
+Existing schemas need migration or recreation; legacy IDs require rebuilding the index.
 
 Zero balances, zero-value transfers and self-transfers remain indexed.
 Mint/burn endpoints are null; the zero address does not become an Account.

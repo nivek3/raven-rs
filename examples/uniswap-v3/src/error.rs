@@ -12,6 +12,8 @@ pub enum ExampleError {
     InvalidEndpoint,
     #[error("RPC request timed out")]
     RequestTimeout,
+    #[error("Uniswap V3 calculation failed: {0}")]
+    UniswapSdk(#[from] uniswap_v3_sdk::error::Error),
 }
 
 impl From<ExampleError> for RavenError {
