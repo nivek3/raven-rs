@@ -1,6 +1,6 @@
 //! Block-scoped entity state used while handlers run outside the write transaction.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use async_trait::async_trait;
 
@@ -17,8 +17,8 @@ pub trait Entity: Serialize + DeserializeOwned + Send + Sync {
     /// Stable name used by the application's storage mapping.
     const ENTITY_NAME: &'static str;
 
-    /// ID under which this instance is stored.
-    fn id(&self) -> &str;
+    /// Storage key, borrowed for string IDs or formatted for numeric IDs.
+    fn id(&self) -> Cow<'_, str>;
 }
 
 /// Typed entity access over the same block-local state as `EntityStore`.
@@ -39,7 +39,7 @@ pub trait EntityStoreExt: EntityStore {
             return Err(EntityError::IdMismatch {
                 entity_type: T::ENTITY_NAME,
                 expected: id.to_owned(),
-                actual: entity.id().to_owned(),
+                actual: entity.id().into_owned(),
             }
             .into());
         }
@@ -52,7 +52,8 @@ pub trait EntityStoreExt: EntityStore {
             entity_type: T::ENTITY_NAME,
             source,
         })?;
-        self.put(T::ENTITY_NAME, entity.id(), &value).await
+        let id = entity.id();
+        self.put(T::ENTITY_NAME, &id, &value).await
     }
 
     /// Stages deletion of an entity of the selected type.

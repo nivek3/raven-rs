@@ -128,11 +128,13 @@ impl Testkit {
                 r#"SELECT COALESCE(jsonb_agg(jsonb_build_object({arguments}) ORDER BY id), '[]'::jsonb) FROM {schema}."{table}" WHERE {condition};"#
             ))?)?;
             for value in values {
-                let id = text(
-                    value
-                        .get("id")
-                        .ok_or_else(|| missing("relational entity has no id"))?,
-                )?;
+                let id = value
+                    .get("id")
+                    .ok_or_else(|| missing("relational entity has no id"))?;
+                let id = match id {
+                    Value::Number(number) => number.to_string(),
+                    _ => text(id)?,
+                };
                 rows.push((kind.to_owned(), id, value));
             }
         }
@@ -452,14 +454,12 @@ impl Testkit {
                 };
                 let source = endpoint(&topics[1])?;
                 let target = endpoint(&topics[2])?;
-                let number = hex_u64(&text(block_number)?)?.to_string();
-                let event_id = format!(
-                    "{number}-{}",
-                    hex_u64(&text(
-                        log.get("logIndex")
-                            .ok_or_else(|| missing("log lacks log index"))?,
-                    )?)?
-                );
+                let number = u128::from(hex_u64(&text(block_number)?)?);
+                let log_index = u128::from(hex_u64(&text(
+                    log.get("logIndex")
+                        .ok_or_else(|| missing("log lacks log index"))?,
+                )?)?);
+                let event_id = number * 1_000_000 + log_index;
                 let amount = hex_bigint(&data)?;
                 let tx = text(
                     log.get("transactionHash")
@@ -473,7 +473,7 @@ impl Testkit {
                 )?)?
                 .to_string();
                 let value = BigDecimal::new(amount.clone(), 18);
-                expected_transfers.insert(event_id.clone(), json!({
+                expected_transfers.insert(event_id.to_string(), json!({
                     "id": event_id, "emitter": token, "contract": token, "transaction": tx.clone(),
                     "timestamp": timestamp.clone(), "from": source.clone(), "to": target.clone(),
                     "fromBalance": source.as_ref().map(|address| format!("{token}/{address}")),
@@ -483,7 +483,7 @@ impl Testkit {
                 expected_transactions.insert(
                     tx.clone(),
                     json!({
-                        "id": tx, "timestamp": timestamp, "blockNumber": number,
+                        "id": tx, "timestamp": timestamp, "blockNumber": number.to_string(),
                     }),
                 );
             }

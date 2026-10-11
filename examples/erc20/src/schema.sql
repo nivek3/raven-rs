@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS erc20_balance_contract ON erc20_balance (contract);
 
 CREATE TABLE IF NOT EXISTS erc20_transfer (
     vid BIGSERIAL PRIMARY KEY, block_number BIGINT NOT NULL,
-    id TEXT NOT NULL UNIQUE, emitter TEXT NOT NULL, transaction TEXT NOT NULL,
+    id NUMERIC(39,0) NOT NULL UNIQUE, emitter TEXT NOT NULL, transaction TEXT NOT NULL,
     timestamp NUMERIC NOT NULL, contract TEXT NOT NULL,
     "from" TEXT, from_balance TEXT, "to" TEXT, to_balance TEXT,
     value NUMERIC NOT NULL, value_exact NUMERIC NOT NULL
@@ -54,7 +54,7 @@ UNION ALL SELECT 'ERC20Balance', id,
     jsonb_build_object('id', id, 'contract', contract, 'account', account,
         'value', value::TEXT, 'valueExact', value_exact::TEXT), lower(block_range)
     FROM erc20_balance WHERE upper_inf(block_range)
-UNION ALL SELECT 'ERC20Transfer', id,
+UNION ALL SELECT 'ERC20Transfer', id::TEXT,
     jsonb_build_object('id', id, 'emitter', emitter, 'transaction', transaction,
         'timestamp', timestamp::TEXT, 'contract', contract, 'from', "from", 'fromBalance', from_balance,
         'to', "to", 'toBalance', to_balance, 'value', value::TEXT, 'valueExact', value_exact::TEXT),
@@ -72,8 +72,14 @@ BEGIN
     FOR change IN SELECT value FROM jsonb_array_elements(changes) LOOP
         data := NULLIF(change->'data', 'null'::JSONB);
         IF change->>'kind' IN ('ERC20Contract', 'ERC20Transfer', 'Transaction') THEN
-            SELECT state.data INTO previous FROM erc20_state state
-                WHERE entity_type = (change->>'kind') AND entity_id = (change->>'id');
+            IF change->>'kind' = 'ERC20Transfer' THEN
+                SELECT state.data INTO previous FROM erc20_state state
+                    WHERE entity_type = 'ERC20Transfer' AND entity_id = (change->>'id')
+                    AND block_number = (SELECT block_number FROM erc20_transfer WHERE id = (change->>'id')::NUMERIC);
+            ELSE
+                SELECT state.data INTO previous FROM erc20_state state
+                    WHERE entity_type = (change->>'kind') AND entity_id = (change->>'id');
+            END IF;
             IF data IS NULL OR (previous IS NOT NULL AND previous <> data)
             THEN RAISE EXCEPTION 'immutable ERC20 entity cannot be changed or deleted'; END IF;
             IF previous IS NOT NULL THEN CONTINUE; END IF;
@@ -103,7 +109,7 @@ BEGIN
         WHEN 'ERC20Transfer' THEN
             INSERT INTO erc20_transfer (block_number, id, emitter, transaction, timestamp, contract,
                 "from", from_balance, "to", to_balance, value, value_exact)
-            VALUES (height, data->>'id', data->>'emitter', data->>'transaction', (data->>'timestamp')::NUMERIC,
+            VALUES (height, (data->>'id')::NUMERIC, data->>'emitter', data->>'transaction', (data->>'timestamp')::NUMERIC,
                 data->>'contract', data->>'from', data->>'fromBalance', data->>'to', data->>'toBalance',
                 (data->>'value')::NUMERIC, (data->>'valueExact')::NUMERIC);
         WHEN 'Transaction' THEN

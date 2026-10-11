@@ -217,7 +217,7 @@ CREATE INDEX IF NOT EXISTS transaction_block ON "transaction" (block_number);
 CREATE TABLE IF NOT EXISTS "mint" (
     vid BIGSERIAL PRIMARY KEY,
     block_number BIGINT NOT NULL,
-    "id" TEXT NOT NULL,
+    "id" NUMERIC(39,0) NOT NULL,
     "transaction" TEXT NOT NULL,
     "timestamp" NUMERIC NOT NULL,
     "pool" TEXT NOT NULL,
@@ -250,7 +250,7 @@ CREATE INDEX IF NOT EXISTS mint_token1 ON "mint" ("token1");
 CREATE TABLE IF NOT EXISTS "burn" (
     vid BIGSERIAL PRIMARY KEY,
     block_number BIGINT NOT NULL,
-    "id" TEXT NOT NULL,
+    "id" NUMERIC(39,0) NOT NULL,
     "transaction" TEXT NOT NULL,
     "pool" TEXT NOT NULL,
     "token0" TEXT NOT NULL,
@@ -282,7 +282,7 @@ CREATE INDEX IF NOT EXISTS burn_token1 ON "burn" ("token1");
 CREATE TABLE IF NOT EXISTS "swap" (
     vid BIGSERIAL PRIMARY KEY,
     block_number BIGINT NOT NULL,
-    "id" TEXT NOT NULL,
+    "id" NUMERIC(39,0) NOT NULL,
     "transaction" TEXT NOT NULL,
     "timestamp" NUMERIC NOT NULL,
     "pool" TEXT NOT NULL,
@@ -554,11 +554,11 @@ SELECT 'PositionSnapshot'::TEXT AS entity_type, id AS entity_id, jsonb_build_obj
 UNION ALL
 SELECT 'Transaction'::TEXT AS entity_type, id AS entity_id, jsonb_build_object('id', "id", 'blockNumber', "block_number"::TEXT, 'timestamp', "timestamp"::TEXT, 'gasUsed', "gas_used"::TEXT, 'gasPrice', "gas_price"::TEXT) AS data, block_number AS block_number FROM "transaction"
 UNION ALL
-SELECT 'Mint'::TEXT AS entity_type, id AS entity_id, jsonb_build_object('id', "id", 'transaction', "transaction", 'timestamp', "timestamp"::TEXT, 'pool', "pool", 'token0', "token0", 'token1', "token1", 'owner', "owner", 'sender', "sender", 'origin', "origin", 'amount', "amount"::TEXT, 'amount0', "amount0"::TEXT, 'amount1', "amount1"::TEXT, 'amountUSD', "amount_usd"::TEXT, 'tickLower', "tick_lower"::TEXT, 'tickUpper', "tick_upper"::TEXT, 'logIndex', "log_index"::TEXT) AS data, block_number AS block_number FROM "mint"
+SELECT 'Mint'::TEXT AS entity_type, id::TEXT AS entity_id, jsonb_build_object('id', "id", 'transaction', "transaction", 'timestamp', "timestamp"::TEXT, 'pool', "pool", 'token0', "token0", 'token1', "token1", 'owner', "owner", 'sender', "sender", 'origin', "origin", 'amount', "amount"::TEXT, 'amount0', "amount0"::TEXT, 'amount1', "amount1"::TEXT, 'amountUSD', "amount_usd"::TEXT, 'tickLower', "tick_lower"::TEXT, 'tickUpper', "tick_upper"::TEXT, 'logIndex', "log_index"::TEXT) AS data, block_number AS block_number FROM "mint"
 UNION ALL
-SELECT 'Burn'::TEXT AS entity_type, id AS entity_id, jsonb_build_object('id', "id", 'transaction', "transaction", 'pool', "pool", 'token0', "token0", 'token1', "token1", 'timestamp', "timestamp"::TEXT, 'owner', "owner", 'origin', "origin", 'amount', "amount"::TEXT, 'amount0', "amount0"::TEXT, 'amount1', "amount1"::TEXT, 'amountUSD', "amount_usd"::TEXT, 'tickLower', "tick_lower"::TEXT, 'tickUpper', "tick_upper"::TEXT, 'logIndex', "log_index"::TEXT) AS data, block_number AS block_number FROM "burn"
+SELECT 'Burn'::TEXT AS entity_type, id::TEXT AS entity_id, jsonb_build_object('id', "id", 'transaction', "transaction", 'pool', "pool", 'token0', "token0", 'token1', "token1", 'timestamp', "timestamp"::TEXT, 'owner', "owner", 'origin', "origin", 'amount', "amount"::TEXT, 'amount0', "amount0"::TEXT, 'amount1', "amount1"::TEXT, 'amountUSD', "amount_usd"::TEXT, 'tickLower', "tick_lower"::TEXT, 'tickUpper', "tick_upper"::TEXT, 'logIndex', "log_index"::TEXT) AS data, block_number AS block_number FROM "burn"
 UNION ALL
-SELECT 'Swap'::TEXT AS entity_type, id AS entity_id, jsonb_build_object('id', "id", 'transaction', "transaction", 'timestamp', "timestamp"::TEXT, 'pool', "pool", 'token0', "token0", 'token1', "token1", 'sender', "sender", 'recipient', "recipient", 'origin', "origin", 'amount0', "amount0"::TEXT, 'amount1', "amount1"::TEXT, 'amountUSD', "amount_usd"::TEXT, 'sqrtPriceX96', "sqrt_price_x96"::TEXT, 'tick', "tick"::TEXT, 'logIndex', "log_index"::TEXT) AS data, block_number AS block_number FROM "swap"
+SELECT 'Swap'::TEXT AS entity_type, id::TEXT AS entity_id, jsonb_build_object('id', "id", 'transaction', "transaction", 'timestamp', "timestamp"::TEXT, 'pool', "pool", 'token0', "token0", 'token1', "token1", 'sender', "sender", 'recipient', "recipient", 'origin', "origin", 'amount0', "amount0"::TEXT, 'amount1', "amount1"::TEXT, 'amountUSD', "amount_usd"::TEXT, 'sqrtPriceX96', "sqrt_price_x96"::TEXT, 'tick', "tick"::TEXT, 'logIndex', "log_index"::TEXT) AS data, block_number AS block_number FROM "swap"
 UNION ALL
 SELECT 'Collect'::TEXT AS entity_type, id AS entity_id, jsonb_build_object('id', "id", 'transaction', "transaction", 'timestamp', "timestamp"::TEXT, 'pool', "pool", 'owner', "owner", 'amount0', "amount0"::TEXT, 'amount1', "amount1"::TEXT, 'amountUSD', "amount_usd"::TEXT, 'tickLower', "tick_lower"::TEXT, 'tickUpper', "tick_upper"::TEXT, 'logIndex', "log_index"::TEXT) AS data, block_number AS block_number FROM "collect"
 UNION ALL
@@ -636,20 +636,23 @@ BEGIN
     IF previous IS NOT NULL THEN CONTINUE; END IF;
     INSERT INTO "transaction" ("id", "block_number", "timestamp", "gas_used", "gas_price") VALUES ((data->>'id')::TEXT, (data->>'blockNumber')::BIGINT, (data->>'timestamp')::NUMERIC, (data->>'gasUsed')::NUMERIC, (data->>'gasPrice')::NUMERIC);
     WHEN 'Mint' THEN
-    SELECT state.data INTO previous FROM pool_state state WHERE entity_type = 'Mint' AND entity_id = (change->>'id');
+    SELECT state.data INTO previous FROM pool_state state WHERE entity_type = 'Mint' AND entity_id = (change->>'id')
+        AND block_number = (SELECT block_number FROM mint WHERE id = (change->>'id')::NUMERIC);
     IF data IS NULL OR (previous IS NOT NULL AND previous <> data) THEN RAISE EXCEPTION 'immutable Uniswap entity cannot change'; END IF;
     IF previous IS NOT NULL THEN CONTINUE; END IF;
-    INSERT INTO "mint" (block_number, "id", "transaction", "timestamp", "pool", "token0", "token1", "owner", "sender", "origin", "amount", "amount0", "amount1", "amount_usd", "tick_lower", "tick_upper", "log_index") VALUES (height, (data->>'id')::TEXT, (data->>'transaction')::TEXT, (data->>'timestamp')::NUMERIC, (data->>'pool')::TEXT, (data->>'token0')::TEXT, (data->>'token1')::TEXT, (data->>'owner')::TEXT, (data->>'sender')::TEXT, (data->>'origin')::TEXT, (data->>'amount')::NUMERIC, (data->>'amount0')::NUMERIC, (data->>'amount1')::NUMERIC, (data->>'amountUSD')::NUMERIC, (data->>'tickLower')::NUMERIC, (data->>'tickUpper')::NUMERIC, (data->>'logIndex')::NUMERIC);
+    INSERT INTO "mint" (block_number, "id", "transaction", "timestamp", "pool", "token0", "token1", "owner", "sender", "origin", "amount", "amount0", "amount1", "amount_usd", "tick_lower", "tick_upper", "log_index") VALUES (height, (data->>'id')::NUMERIC, (data->>'transaction')::TEXT, (data->>'timestamp')::NUMERIC, (data->>'pool')::TEXT, (data->>'token0')::TEXT, (data->>'token1')::TEXT, (data->>'owner')::TEXT, (data->>'sender')::TEXT, (data->>'origin')::TEXT, (data->>'amount')::NUMERIC, (data->>'amount0')::NUMERIC, (data->>'amount1')::NUMERIC, (data->>'amountUSD')::NUMERIC, (data->>'tickLower')::NUMERIC, (data->>'tickUpper')::NUMERIC, (data->>'logIndex')::NUMERIC);
     WHEN 'Burn' THEN
-    SELECT state.data INTO previous FROM pool_state state WHERE entity_type = 'Burn' AND entity_id = (change->>'id');
+    SELECT state.data INTO previous FROM pool_state state WHERE entity_type = 'Burn' AND entity_id = (change->>'id')
+        AND block_number = (SELECT block_number FROM burn WHERE id = (change->>'id')::NUMERIC);
     IF data IS NULL OR (previous IS NOT NULL AND previous <> data) THEN RAISE EXCEPTION 'immutable Uniswap entity cannot change'; END IF;
     IF previous IS NOT NULL THEN CONTINUE; END IF;
-    INSERT INTO "burn" (block_number, "id", "transaction", "pool", "token0", "token1", "timestamp", "owner", "origin", "amount", "amount0", "amount1", "amount_usd", "tick_lower", "tick_upper", "log_index") VALUES (height, (data->>'id')::TEXT, (data->>'transaction')::TEXT, (data->>'pool')::TEXT, (data->>'token0')::TEXT, (data->>'token1')::TEXT, (data->>'timestamp')::NUMERIC, (data->>'owner')::TEXT, (data->>'origin')::TEXT, (data->>'amount')::NUMERIC, (data->>'amount0')::NUMERIC, (data->>'amount1')::NUMERIC, (data->>'amountUSD')::NUMERIC, (data->>'tickLower')::NUMERIC, (data->>'tickUpper')::NUMERIC, (data->>'logIndex')::NUMERIC);
+    INSERT INTO "burn" (block_number, "id", "transaction", "pool", "token0", "token1", "timestamp", "owner", "origin", "amount", "amount0", "amount1", "amount_usd", "tick_lower", "tick_upper", "log_index") VALUES (height, (data->>'id')::NUMERIC, (data->>'transaction')::TEXT, (data->>'pool')::TEXT, (data->>'token0')::TEXT, (data->>'token1')::TEXT, (data->>'timestamp')::NUMERIC, (data->>'owner')::TEXT, (data->>'origin')::TEXT, (data->>'amount')::NUMERIC, (data->>'amount0')::NUMERIC, (data->>'amount1')::NUMERIC, (data->>'amountUSD')::NUMERIC, (data->>'tickLower')::NUMERIC, (data->>'tickUpper')::NUMERIC, (data->>'logIndex')::NUMERIC);
     WHEN 'Swap' THEN
-    SELECT state.data INTO previous FROM pool_state state WHERE entity_type = 'Swap' AND entity_id = (change->>'id');
+    SELECT state.data INTO previous FROM pool_state state WHERE entity_type = 'Swap' AND entity_id = (change->>'id')
+        AND block_number = (SELECT block_number FROM swap WHERE id = (change->>'id')::NUMERIC);
     IF data IS NULL OR (previous IS NOT NULL AND previous <> data) THEN RAISE EXCEPTION 'immutable Uniswap entity cannot change'; END IF;
     IF previous IS NOT NULL THEN CONTINUE; END IF;
-    INSERT INTO "swap" (block_number, "id", "transaction", "timestamp", "pool", "token0", "token1", "sender", "recipient", "origin", "amount0", "amount1", "amount_usd", "sqrt_price_x96", "tick", "log_index") VALUES (height, (data->>'id')::TEXT, (data->>'transaction')::TEXT, (data->>'timestamp')::NUMERIC, (data->>'pool')::TEXT, (data->>'token0')::TEXT, (data->>'token1')::TEXT, (data->>'sender')::TEXT, (data->>'recipient')::TEXT, (data->>'origin')::TEXT, (data->>'amount0')::NUMERIC, (data->>'amount1')::NUMERIC, (data->>'amountUSD')::NUMERIC, (data->>'sqrtPriceX96')::NUMERIC, (data->>'tick')::NUMERIC, (data->>'logIndex')::NUMERIC);
+    INSERT INTO "swap" (block_number, "id", "transaction", "timestamp", "pool", "token0", "token1", "sender", "recipient", "origin", "amount0", "amount1", "amount_usd", "sqrt_price_x96", "tick", "log_index") VALUES (height, (data->>'id')::NUMERIC, (data->>'transaction')::TEXT, (data->>'timestamp')::NUMERIC, (data->>'pool')::TEXT, (data->>'token0')::TEXT, (data->>'token1')::TEXT, (data->>'sender')::TEXT, (data->>'recipient')::TEXT, (data->>'origin')::TEXT, (data->>'amount0')::NUMERIC, (data->>'amount1')::NUMERIC, (data->>'amountUSD')::NUMERIC, (data->>'sqrtPriceX96')::NUMERIC, (data->>'tick')::NUMERIC, (data->>'logIndex')::NUMERIC);
     WHEN 'Collect' THEN
     SELECT state.data INTO previous FROM pool_state state WHERE entity_type = 'Collect' AND entity_id = (change->>'id');
     IF data IS NULL OR (previous IS NOT NULL AND previous <> data) THEN RAISE EXCEPTION 'immutable Uniswap entity cannot change'; END IF;

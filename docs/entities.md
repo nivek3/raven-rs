@@ -2,19 +2,22 @@
 
 Implement `Entity` for a serde value. Its unique, stable `ENTITY_NAME` selects the
 application's storage mapping; `id()` selects an instance.
+`id()` returns `Cow<'_, str>`: string IDs borrow their value, while numeric IDs
+format a storage key. Raw store keys remain strings.
 
 ## Typed entity access
 
 ```rust,ignore
 use raven_engine::{Entity, EntityStore, EntityStoreExt, RavenResult};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 #[derive(Serialize, Deserialize)]
 struct Balance { id: String, amount: String }
 
 impl Entity for Balance {
     const ENTITY_NAME: &'static str = "Balance";
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> Cow<'_, str> { self.id.as_str().into() }
 }
 
 async fn update_balance(entities: &mut dyn EntityStore, id: &str) -> RavenResult<()> {
@@ -34,6 +37,10 @@ async fn update_balance(entities: &mut dyn EntityStore, id: &str) -> RavenResult
 
 Typed access shares block-local state with raw `get/put/delete`, which use
 `EntityValue` (`serde_json::Value`). Later handlers see earlier staged writes.
+
+For a `u128` ID field, return `self.id.to_string().into()` from `id()`.
+The workspace enables `serde_json`'s `arbitrary_precision` feature so the field
+remains an exact JSON number. Native SQL tables can use `NUMERIC(39,0)` for IDs.
 
 ## Entity changes are not a schema
 

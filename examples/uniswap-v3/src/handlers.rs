@@ -7,7 +7,7 @@ use crate::{
         Token, Transaction,
     },
     events::*,
-    math::{decimal, integer, power, round34, units},
+    math::{decimal, integer, round34, sqrt_prices, units},
 };
 use alloy_primitives::{Address, B256};
 use alloy_provider::{Provider, RootProvider};
@@ -18,9 +18,10 @@ use bigdecimal::BigDecimal;
 use raven_engine::{
     EngineError, Entity, EntityStore, EntityStoreExt, Handler, RavenError, RavenResult,
 };
-use raven_evm::{LogUpdate, ParsedLog};
+use raven_evm::{LogUpdate, ParsedLog, event_id};
 use std::{future::IntoFuture, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
+use uniswap_v3_sdk::utils::get_sqrt_ratio_at_tick;
 
 /// Loads a required entity or reports invalid pool state.
 pub(crate) async fn load<T: Entity>(store: &mut dyn EntityStore, id: &str) -> RavenResult<T> {
@@ -518,17 +519,17 @@ impl<P: Provider> Mapping<P> {
         }
         self.tvl(&mut pool, &token0, &token1, &mut factory, &bundle);
         self.transaction(store, &context).await?;
-        let entity_id = format!("{}#{}", context.transaction_hash, pool.tx_count);
+        let entity_id = event_id(event.block_number, event.log_index)?;
         let lower_id = format!("{id}#{lower}");
         let upper_id = format!("{id}#{upper}");
         let mut lower_tick = store.load::<Tick>(&lower_id).await?;
         let mut upper_tick = store.load::<Tick>(&upper_id).await?;
         if mint {
             if lower_tick.is_none() {
-                lower_tick = Some(new_tick(&id, lower, &context));
+                lower_tick = Some(new_tick(&id, lower, &context)?);
             }
             if upper_tick.is_none() {
-                upper_tick = Some(new_tick(&id, upper, &context));
+                upper_tick = Some(new_tick(&id, upper, &context)?);
             }
         }
         let mut lower_tick_value = None;
@@ -695,20 +696,11 @@ impl<P: Provider> Mapping<P> {
                 round34(token.untracked_volume_usd.clone() + untracked.clone());
             token.fees_usd = round34(token.fees_usd.clone() + fees.clone());
         }
-        let sqrt = integer(&event.value.sqrtPriceX96.to_string());
-        let q192 = decimal(&(alloy_primitives::U256::from(1) << 192_usize).to_string());
-        let scale0 = decimal(&format!("1e{}", token0.decimals));
-        let scale1 = decimal(&format!("1e{}", token1.decimals));
-        let ratio = round34(sqrt.square());
-        let ratio = round34(ratio / q192);
-        let ratio = round34(ratio * scale0);
-        let ratio = round34(ratio / scale1);
-        pool.token0_price = if ratio == 0 {
-            BigDecimal::from(0)
-        } else {
-            round34(BigDecimal::from(1) / ratio.clone())
-        };
-        pool.token1_price = ratio;
+        (pool.token1_price, pool.token0_price) = sqrt_prices(
+            event.value.sqrtPriceX96,
+            &token0.decimals,
+            &token1.decimals,
+        )?;
         store.save(&pool).await?;
         bundle.eth_price_usd = self.eth_price(store).await?;
         store.save(&bundle).await?;
@@ -726,7 +718,7 @@ impl<P: Provider> Mapping<P> {
         }
         self.transaction(store, &context).await?;
         let swap = SwapEntity {
-            id: format!("{}#{}", context.transaction_hash, pool.tx_count),
+            id: event_id(event.block_number, event.log_index)?,
             transaction: context.transaction_hash.clone(),
             timestamp: BigDecimal::from(context.timestamp),
             pool: id.clone(),
@@ -784,19 +776,21 @@ fn bytes_metadata(value: Option<alloy_primitives::B256>) -> String {
 }
 
 /// Creates the initial tick record for a pool index.
-fn new_tick(pool: &str, index: i32, context: &Context) -> Tick {
-    let price = power(&decimal("1.0001"), index);
-    Tick {
+fn new_tick(pool: &str, index: i32, context: &Context) -> RavenResult<Tick> {
+    let tick = index.try_into().map_err(|_| ExampleError::InvalidPoolState)?;
+    let sqrt = get_sqrt_ratio_at_tick(tick).map_err(ExampleError::from)?;
+    let (price0, price1) = sqrt_prices(sqrt, &BigDecimal::from(0), &BigDecimal::from(0))?;
+    Ok(Tick {
         id: format!("{pool}#{index}"),
         pool: pool.into(),
         pool_address: Some(pool.into()),
         tick_idx: BigDecimal::from(index),
         created_at_timestamp: BigDecimal::from(context.timestamp),
         created_at_block_number: BigDecimal::from(context.block_number),
-        price0: price.clone(),
-        price1: round34(BigDecimal::from(1) / price),
+        price0,
+        price1,
         ..Tick::default()
-    }
+    })
 }
 
 /// Membership is read through EntityStore before ABI decoding. New pools from

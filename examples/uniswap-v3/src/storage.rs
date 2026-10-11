@@ -17,14 +17,27 @@ impl PostgresStorage for Storage {
         kind: &str,
         id: &str,
     ) -> RavenResult<Option<EntityValue>> {
-        let row = sqlx::query_scalar::<_, Json<EntityValue>>(
-            "SELECT data FROM pool_state WHERE entity_type = $1 AND entity_id = $2",
-        )
-        .bind(kind)
-        .bind(id)
-        .fetch_optional(conn)
-        .await
-        .map_err(PostgresError::Database)?;
+        let query = match kind {
+            "Mint" => {
+                "SELECT data FROM pool_state WHERE entity_type = $1 AND entity_id = $2 \
+                 AND block_number = (SELECT block_number FROM mint WHERE id = $2::NUMERIC)"
+            }
+            "Burn" => {
+                "SELECT data FROM pool_state WHERE entity_type = $1 AND entity_id = $2 \
+                 AND block_number = (SELECT block_number FROM burn WHERE id = $2::NUMERIC)"
+            }
+            "Swap" => {
+                "SELECT data FROM pool_state WHERE entity_type = $1 AND entity_id = $2 \
+                 AND block_number = (SELECT block_number FROM swap WHERE id = $2::NUMERIC)"
+            }
+            _ => "SELECT data FROM pool_state WHERE entity_type = $1 AND entity_id = $2",
+        };
+        let row = sqlx::query_scalar::<_, Json<EntityValue>>(query)
+            .bind(kind)
+            .bind(id)
+            .fetch_optional(conn)
+            .await
+            .map_err(PostgresError::Database)?;
         Ok(row.map(|row| row.0))
     }
 

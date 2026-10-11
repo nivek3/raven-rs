@@ -146,12 +146,21 @@ async fn transfer_results_match_openzeppelin_entity_fields_and_ids() {
     let balance = balance_id(&contract.id, Some(&account));
     let tx = B256::repeat_byte(106).to_string();
     assert_eq!(
-        entities.entity("ERC20Transfer", "6-0"),
+        entities.entity("ERC20Transfer", "6000000"),
         &json!({
-            "id": "6-0", "emitter": contract.id, "contract": contract.id,
+            "id": 6_000_000u128, "emitter": contract.id, "contract": contract.id,
             "transaction": tx, "timestamp": "1006", "from": account, "to": account,
             "fromBalance": balance, "toBalance": balance, "value": "0.1", "valueExact": "10",
         })
+    );
+    assert_eq!(
+        entities
+            .load::<ERC20Transfer>("6000000")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        6_000_000u128
     );
     assert_eq!(
         entities.entity("Transaction", &tx),
@@ -160,15 +169,15 @@ async fn transfer_results_match_openzeppelin_entity_fields_and_ids() {
         })
     );
     assert_eq!(
-        entities.entity("ERC20Transfer", "1-0")["from"],
+        entities.entity("ERC20Transfer", "1000000")["from"],
         EntityValue::Null
     );
     assert_eq!(
-        entities.entity("ERC20Transfer", "1-0")["fromBalance"],
+        entities.entity("ERC20Transfer", "1000000")["fromBalance"],
         EntityValue::Null
     );
     assert_eq!(
-        entities.entity("ERC20Transfer", "4-0")["to"],
+        entities.entity("ERC20Transfer", "4000000")["to"],
         EntityValue::Null
     );
     assert!(
@@ -375,8 +384,11 @@ async fn handler_reads_metadata_and_timestamp_then_reuses_them_for_the_same_tran
     );
     assert_eq!(entities.entity("ERC20Contract", &token)["symbol"], "TEST");
     assert_eq!(entities.entity("ERC20Contract", &token)["decimals"], 6);
-    assert_eq!(entities.entity("ERC20Transfer", "1-0")["value"], "1");
-    assert_eq!(entities.entity("ERC20Transfer", "1-0")["timestamp"], "1500");
+    assert_eq!(entities.entity("ERC20Transfer", "1000000")["value"], "1");
+    assert_eq!(
+        entities.entity("ERC20Transfer", "1000000")["timestamp"],
+        "1500"
+    );
     let second = event(
         1,
         1,
@@ -385,6 +397,9 @@ async fn handler_reads_metadata_and_timestamp_then_reuses_them_for_the_same_tran
         U256::from(10),
     );
     handler.handle(&mut entities, &second).await.unwrap();
-    assert_eq!(entities.entity("ERC20Transfer", "1-1")["timestamp"], "1500");
+    assert_eq!(
+        entities.entity("ERC20Transfer", "1000001")["timestamp"],
+        "1500"
+    );
     assert!(responses.read_q().is_empty());
 }

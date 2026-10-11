@@ -2,6 +2,7 @@
 //! through the corresponding foreign IDs instead of persisting duplicate arrays.
 
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,7 +36,7 @@ pub struct ERC20Balance {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ERC20Transfer {
-    pub id: String,
+    pub id: u128,
     pub emitter: String,
     pub transaction: String,
     pub timestamp: String,
@@ -59,39 +60,39 @@ pub(crate) struct Transaction {
 impl raven_engine::Entity for Account {
     const ENTITY_NAME: &'static str = "Account";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for ERC20Contract {
     const ENTITY_NAME: &'static str = "ERC20Contract";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for ERC20Balance {
     const ENTITY_NAME: &'static str = "ERC20Balance";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }
 
 impl raven_engine::Entity for ERC20Transfer {
     const ENTITY_NAME: &'static str = "ERC20Transfer";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.to_string().into()
     }
 }
 
 impl raven_engine::Entity for Transaction {
     const ENTITY_NAME: &'static str = "Transaction";
 
-    fn id(&self) -> &str {
-        &self.id
+    fn id(&self) -> Cow<'_, str> {
+        self.id.as_str().into()
     }
 }

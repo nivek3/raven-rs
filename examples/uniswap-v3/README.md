@@ -17,6 +17,10 @@ See [entities](src/entities.rs) and [schema](src/schema.sql) for all columns.
 Addresses/hashes are lowercase text, amounts use `NUMERIC`, positions use
 `BIGINT`, and whitelist pools use `TEXT[]`. Raw integers remain exact;
 `BigDecimal` calculations round each operation to 34 significant digits.
+Tick prices use `uniswap-v3-sdk` TickMath; Q64.96 price ratios and their inverses
+use SDK Core fractions and 34-digit formatting before decimal-unit conversion.
+Tick spacing comes from the SDK for the supported 100/500/3000/10000 fee tiers. Pricing policy and
+aggregate accounting remain application-owned.
 
 ## Event processing and calculations
 
@@ -38,7 +42,7 @@ aggregates. These field-specific rules also apply:
 <summary>Mapping rules and limitations</summary>
 
 - `txCount` counts relevant events. `Transaction.gasUsed` is `0`; gas price comes from the transaction.
-- Mint/Burn/Swap IDs are `<transaction hash>#<incremented pool txCount>`; Tick IDs are `<pool>#<tick>`.
+- Mint/Burn/Swap IDs are `u128` values of `block_number * 1,000,000 + log_index`, computed by `raven_evm::event_id`. JSON stores numbers with `arbitrary_precision`; SQL IDs use `NUMERIC(39,0)`. The block-global log index must be below `1,000,000`. Tick IDs are `<pool>#<tick>`. Existing schemas need migration or recreation; legacy IDs and previously overwritten events require rebuilding the index.
 - Burn removes liquidity/reserves/TVL. Flash only updates fee growth, without entities or counters; Pool Collect is unhandled. Collect, Flash and TickHourData tables remain empty.
 - Mint/Burn and bounded Swap crossings read tick fee growth and update TickDayData, which copies `volumeToken0` into both volume fields.
 - Position IDs are decimal NFT IDs; snapshots use `<NFT ID>#<block number>`. Same-block events share a snapshot. NFT Collect uses amount0/token0 decimals for both fee fields; reverting `positions()` reads for missing positions are ignored.
