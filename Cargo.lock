@@ -3741,6 +3741,7 @@ dependencies = [
  "bigdecimal",
  "clap",
  "dotenvy",
+ "hex",
  "libc",
  "num-traits",
  "percent-encoding",

@@ -48,6 +48,7 @@ async-trait = "0.1.92"
 bigdecimal = "0.4.11"
 clap = { version = "4", features = ["derive", "env"] }
 dotenv = { package = "dotenvy", version = "0.15" }
+hex = "0.4.3"
 libc = "0.2"
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false, features = [

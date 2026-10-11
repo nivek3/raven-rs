@@ -593,7 +593,7 @@ impl Testkit {
             serde_json::from_slice(&fs::read(fixture.join("official-artifacts.lock.json"))?)?;
         let artifact = fixture.join("official-artifacts").join(relative);
         let expected = text(&lock["artifacts"][relative])?;
-        let actual = format!("{:x}", Sha256::digest(fs::read(&artifact)?));
+        let actual = hex::encode(Sha256::digest(fs::read(&artifact)?));
         require(
             actual == expected,
             format!("official artifact hash differs: {relative}"),
