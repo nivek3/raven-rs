@@ -129,11 +129,9 @@ impl<T: Provider> RpcLogCrawler<T> {
     /// Loads the requested block payload and verifies its height.
     async fn block_at(&self, number: u64) -> RavenResult<Block> {
         let filter = self.filter.as_ref();
-        let request = self.provider.get_block_by_number(number.into());
-        let request = if filter.blocks {
-            request.full()
-        } else {
-            request
+        let mut request = self.provider.get_block_by_number(number.into());
+        if filter.blocks {
+            request = request.full()
         };
         let block = self
             .metrics
