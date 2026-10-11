@@ -2,6 +2,7 @@
 use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
 use alloy_sol_types::SolEvent;
+use bigdecimal::BigDecimal;
 use raven_engine::{EntityStore, EntityStoreExt, RavenError, RavenResult};
 use raven_evm::{LogUpdate, ParsedLog};
 
@@ -116,8 +117,8 @@ impl<P: Provider> Mapping<P> {
             owner: position.owner.clone(),
             pool: position.pool.clone(),
             position: position.id.clone(),
-            block_number: integer(&context.block_number.to_string()),
-            timestamp: integer(&context.timestamp.to_string()),
+            block_number: BigDecimal::from(context.block_number),
+            timestamp: BigDecimal::from(context.timestamp),
             liquidity: position.liquidity.clone(),
             deposited_token0: position.deposited_token0.clone(),
             deposited_token1: position.deposited_token1.clone(),
@@ -162,7 +163,7 @@ impl<P: Provider> Mapping<P> {
         ) else {
             return Ok(());
         };
-        let liquidity = integer(&liquidity.to_string());
+        let liquidity = BigDecimal::from(liquidity);
         position.liquidity = if increase {
             &position.liquidity + liquidity
         } else {

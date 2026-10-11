@@ -11,8 +11,9 @@ use bigdecimal::{
     BigDecimal,
     num_bigint::{BigInt, Sign},
 };
-use raven_engine::{EngineError, EntityStore, EntityStoreExt, Handler, RavenError, RavenResult};
+use raven_engine::{EngineError, EntityStore, EntityStoreExt, Handler, RavenResult};
 use raven_evm::{ParsedLog, event_id};
+use rpc_log_crawler_datasource::RpcLogError;
 
 use crate::{
     ExampleError, Transfer,
@@ -64,7 +65,7 @@ impl<P: Provider> TransferHandler<P> {
                 Ok(None)
             }
             // Transport, archive-state and rate-limit failures must not become metadata defaults.
-            Err(error) => Err(RavenError::Source(Box::new(error))),
+            Err(error) => Err(RpcLogError::Request(error).into()),
         }
     }
 
@@ -126,7 +127,7 @@ impl<P: Provider> TransferHandler<P> {
         )
         .await
         .map_err(|_| ExampleError::RequestTimeout)?
-        .map_err(|error| RavenError::Source(Box::new(error)))?
+        .map_err(RpcLogError::Request)?
         .ok_or(EngineError::MissingBlock)?;
         if block.header.hash != event.block_hash || block.header.inner.number != event.block_number
         {

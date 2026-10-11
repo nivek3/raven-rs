@@ -4,7 +4,7 @@ use bigdecimal::BigDecimal;
 use bigdecimal::ToPrimitive;
 use raven_engine::{EntityStore, EntityStoreExt, RavenResult};
 use raven_evm::ParsedLog;
-use uniswap_v3_sdk::constants::FeeAmount;
+use uniswap_v3_sdk::{constants::FeeAmount, entities::TickIndex};
 
 use crate::{
     ExampleError,
@@ -105,31 +105,32 @@ impl<P: Provider> Mapping<P> {
             Some(fee @ (100 | 500 | 3_000 | 10_000)) => FeeAmount::from(fee),
             _ => return Err(ExampleError::InvalidPoolState.into()),
         };
-        let spacing = integer(&fee.tick_spacing().to_string());
-        let modulo = &new % &spacing;
-        if modulo == integer("0") {
+        let tick_spacing = fee.tick_spacing().as_i32();
+        let spacing = BigDecimal::from(tick_spacing);
+        if new > old && &new % &spacing == 0 {
             self.update_tick(store, &pool.id, &new, event, context)
                 .await?;
         }
-        let distance = if old > new { &old - &new } else { &new - &old };
+        let distance = (&new - &old).abs();
         // Skip tick refresh when the integer spacing distance exceeds 100.
-        if distance >= &spacing * integer("101") {
+        if distance >= &spacing * 101 {
             return Ok(());
         }
-        // Use the new tick's signed remainder to choose crossed spacing boundaries.
+        let old_index = old.to_i32().ok_or(ExampleError::InvalidPoolState)?;
+        let boundary = BigDecimal::from(old_index.compress(tick_spacing)) * &spacing;
         if new > old {
-            let mut index = &old + (&spacing - &modulo);
-            while index <= new {
+            let mut index = &boundary + &spacing;
+            while index < new {
                 self.update_tick(store, &pool.id, &index, event, context)
                     .await?;
-                index += spacing.clone();
+                index += &spacing;
             }
         } else if new < old {
-            let mut index = &old - &modulo;
-            while index >= new {
+            let mut index = boundary;
+            while index > new {
                 self.update_tick(store, &pool.id, &index, event, context)
                     .await?;
-                index -= spacing.clone();
+                index -= &spacing;
             }
         }
         Ok(())

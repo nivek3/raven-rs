@@ -110,7 +110,7 @@ async fn context_selects_transaction_by_index_and_rejects_invalid_positions() {
     .parsed(());
     let context = mapping.context(&event).await.unwrap();
     assert_eq!(context.transaction_hash, second_hash.to_string());
-    assert_eq!(context.gas_price, integer("9"));
+    assert_eq!(context.gas_price, BigDecimal::from(9));
     assert_eq!(context.origin, origin.to_string().to_lowercase());
     assert_eq!(context.timestamp, 86_400);
 
@@ -129,7 +129,7 @@ async fn context_selects_transaction_by_index_and_rejects_invalid_positions() {
     event.transaction_hash = first_hash;
     assert_eq!(
         mapping.context(&event).await.unwrap().gas_price,
-        integer("7")
+        BigDecimal::from(7)
     );
 }
 
@@ -209,12 +209,131 @@ where
     );
     (value, RpcFixture { task, requests })
 }
+#[tokio::test]
+/// Verifies contract and block request errors hide details while keeping their cause.
+async fn rpc_errors_hide_response_details_and_preserve_the_source() {
+    use alloy_primitives::{Address, B256};
+    use std::error::Error;
+
+    let (mapping, _rpc) =
+        rpc_mapping(|_| Ok("https://rpc.invalid/redaction-sentinel".into())).await;
+    let address = Address::repeat_byte(2);
+    let hash = B256::repeat_byte(3);
+    let call_error = mapping
+        .call(address, hash, crate::events::TokenMetadata::nameCall)
+        .await
+        .unwrap_err();
+    let event = raven_evm::LogUpdate {
+        log: alloy_primitives::Log::new_unchecked(address, vec![], Default::default()),
+        block_number: 10,
+        block_hash: hash,
+        transaction_hash: B256::ZERO,
+        transaction_index: 0,
+        log_index: 0,
+    }
+    .parsed(());
+    let context_error = mapping.context(&event).await.map(|_| ()).unwrap_err();
+    for error in [call_error, context_error] {
+        assert_eq!(error.to_string(), "source error: Alloy RPC request failed");
+        assert!(
+            error
+                .source()
+                .unwrap()
+                .source()
+                .unwrap()
+                .to_string()
+                .contains("redaction-sentinel")
+        );
+    }
+}
+
+#[tokio::test]
+async fn initialize_sets_prices_and_intervals_before_any_swap() {
+    use alloy_primitives::{Address, B256, U160};
+
+    for (decimals0, decimals1, price0, price1) in [
+        (18, 18, "1", "1"),
+        (18, 6, "0.000000000001", "1000000000000"),
+    ] {
+        let mut mapping = mapping();
+        let address = Address::repeat_byte(2);
+        let id = address.to_string().to_lowercase();
+        let token0 = Token {
+            id: mapping.chain.reference_token.clone(),
+            decimals: BigDecimal::from(decimals0),
+            ..Default::default()
+        };
+        let token1 = Token {
+            id: Address::repeat_byte(6).to_string().to_lowercase(),
+            decimals: BigDecimal::from(decimals1),
+            ..Default::default()
+        };
+        mapping.chain.stable_token_pool = id.clone();
+        mapping.chain.stable_coins = vec![token1.id.clone()];
+        let mut store = Memory::default();
+        store.save(&token0).await.unwrap();
+        store.save(&token1).await.unwrap();
+        store
+            .save(&Pool {
+                id: id.clone(),
+                token0: token0.id.clone(),
+                token1: token1.id.clone(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        store
+            .save(&Bundle {
+                id: "1".into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let hash = B256::repeat_byte(3);
+        let (block, tx) = cached_block(hash, 10, 86_401, address, 7);
+        *mapping.block.lock().await = Some((hash, block));
+        let event = raven_evm::LogUpdate {
+            log: alloy_primitives::Log::new_unchecked(address, vec![], Default::default()),
+            block_number: 10,
+            block_hash: hash,
+            transaction_hash: tx,
+            transaction_index: 0,
+            log_index: 0,
+        }
+        .parsed(crate::Initialize {
+            sqrtPriceX96: U160::from(1u128 << 96),
+            tick: 0.try_into().unwrap(),
+        });
+        mapping.initialized(&mut store, &event).await.unwrap();
+        let pool = store.load::<Pool>(&id).await.unwrap().unwrap();
+        assert_eq!(pool.token0_price, decimal(price0));
+        assert_eq!(pool.token1_price, decimal(price1));
+        let bundle = store.load::<Bundle>("1").await.unwrap().unwrap();
+        assert_eq!(bundle.eth_price_usd, decimal(price1));
+        for (kind, bucket) in [("PoolDayData", 1), ("PoolHourData", 24)] {
+            let data = store
+                .get(kind, &format!("{id}-{bucket}"))
+                .await
+                .unwrap()
+                .unwrap();
+            for field in ["token0Price", "open", "high", "low", "close"] {
+                assert_decimal(&data[field], price0);
+            }
+            assert_decimal(&data["token1Price"], price1);
+        }
+        let token0 = store.load::<Token>(&token0.id).await.unwrap().unwrap();
+        let token1 = store.load::<Token>(&token1.id).await.unwrap().unwrap();
+        assert_eq!(token0.derived_eth, BigDecimal::from(1));
+        assert_eq!(token1.derived_eth, decimal(price0));
+    }
+}
+
 #[test]
 /// Verifies decimal price and signed-unit calculations preserve required precision.
 fn decimal_prices_and_signed_units_preserve_graph_precision() {
     assert_eq!(units("-1234567", "6"), decimal("-1.234567"));
     assert_eq!(
-        round34(integer("1") / integer("3")),
+        round34(BigDecimal::from(1) / BigDecimal::from(3)),
         decimal("0.3333333333333333333333333333333333")
     );
     assert_eq!(
@@ -228,22 +347,22 @@ fn sdk_prices_preserve_direction_decimal_scaling_and_tick_bounds() {
     use alloy_primitives::U160;
     let q96: U160 = "79228162514264337593543950336".parse().unwrap();
     assert_eq!(
-        sqrt_prices(q96, &integer("18"), &integer("6")).unwrap(),
+        sqrt_prices(q96, &BigDecimal::from(18), &BigDecimal::from(6)).unwrap(),
         (decimal("1000000000000"), decimal("0.000000000001"))
     );
     assert_eq!(
-        sqrt_prices(q96, &integer("6"), &integer("18")).unwrap(),
+        sqrt_prices(q96, &BigDecimal::from(6), &BigDecimal::from(18)).unwrap(),
         (decimal("0.000000000001"), decimal("1000000000000"))
     );
     assert_eq!(
-        sqrt_prices(U160::ZERO, &integer("18"), &integer("6")).unwrap(),
+        sqrt_prices(U160::ZERO, &BigDecimal::from(18), &BigDecimal::from(6)).unwrap(),
         (decimal("0"), decimal("0"))
     );
     assert_eq!(
         sqrt_prices(
             "79227690016757081556856826518".parse().unwrap(),
-            &integer("18"),
-            &integer("18"),
+            &BigDecimal::from(18),
+            &BigDecimal::from(18),
         )
         .unwrap(),
         (
@@ -251,7 +370,7 @@ fn sdk_prices_preserve_direction_decimal_scaling_and_tick_bounds() {
             decimal("1.000011927620661277813596104229921"),
         )
     );
-    let (_, inverse) = sqrt_prices(U160::from(1), &integer("0"), &integer("0")).unwrap();
+    let (_, inverse) = sqrt_prices(U160::from(1), &BigDecimal::from(0), &BigDecimal::from(0)).unwrap();
     assert_eq!(
         inverse,
         decimal("6277101735386680763835789423207666416102355444464034512896")
@@ -262,7 +381,7 @@ fn sdk_prices_preserve_direction_decimal_scaling_and_tick_bounds() {
         transaction_hash: "tx".into(),
         log_index: 0,
         origin: "owner".into(),
-        gas_price: integer("1"),
+        gas_price: BigDecimal::from(1),
     };
     let zero = super::new_tick("pool", 0, &context).unwrap();
     assert_eq!((zero.price0, zero.price1), (decimal("1"), decimal("1")));
@@ -281,7 +400,9 @@ fn sdk_prices_preserve_direction_decimal_scaling_and_tick_bounds() {
 /// Verifies integer entities remain exact while decimal operations use 34 digits.
 fn entity_uint256_round_trip_is_exact_while_decimal_operations_round_to_34_digits() {
     let maximum =
-        integer("115792089237316195423570985008687907853269984665640564039457584007913129639935");
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+            .parse::<BigDecimal>()
+            .unwrap();
     let token = Token {
         id: "token".into(),
         total_supply: maximum.clone(),
@@ -292,7 +413,7 @@ fn entity_uint256_round_trip_is_exact_while_decimal_operations_round_to_34_digit
     let restored: Token = serde_json::from_value(json).unwrap();
     assert_eq!(restored.total_supply, maximum);
 
-    let exact = integer("123456789012345678901234567890123456789");
+    let exact = BigDecimal::from(123_456_789_012_345_678_901_234_567_890_123_456_789u128);
     assert_ne!(exact, round34(exact.clone()));
     assert_eq!(
         decimal("123456789012345678901234567890123456789"),
@@ -305,14 +426,14 @@ async fn intervals_use_committed_mapping_state_and_cross_hour_day_boundaries() {
     let mut store = Memory::default();
     let factory = Factory {
         id: "factory".into(),
-        tx_count: integer("9"),
+        tx_count: BigDecimal::from(9),
         total_value_locked_usd: decimal("300"),
         ..Default::default()
     };
     store.save(&factory).await.unwrap();
     let pool = Pool {
         id: "pool".into(),
-        liquidity: integer("50"),
+        liquidity: BigDecimal::from(50),
         token0_price: decimal("2"),
         total_value_locked_usd: decimal("100"),
         ..Default::default()
@@ -338,7 +459,7 @@ async fn intervals_use_committed_mapping_state_and_cross_hour_day_boundaries() {
         transaction_hash: "tx".into(),
         log_index: 1,
         origin: "owner".into(),
-        gas_price: integer("1"),
+        gas_price: BigDecimal::from(1),
     };
     crate::intervals::update(
         &mut store, &context, "factory", "pool", &token0, &token1, None,
@@ -585,7 +706,7 @@ async fn tracked_volume_and_liquidity_pricing_follow_reference_policy() {
     let reference = mapping.chain.reference_token.clone();
     let token0 = Token {
         id: reference.clone(),
-        derived_eth: integer("1"),
+        derived_eth: BigDecimal::from(1),
         ..Default::default()
     };
     let mut token1 = Token {
@@ -622,7 +743,7 @@ async fn tracked_volume_and_liquidity_pricing_follow_reference_policy() {
             id: id.into(),
             token0: "target".into(),
             token1: reference.clone(),
-            liquidity: integer("100"),
+            liquidity: BigDecimal::from(100),
             total_value_locked_token1: decimal(locked),
             token1_price: decimal(price),
             ..Default::default()
@@ -695,21 +816,21 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         id: pool_id.clone(),
         token0: "target".into(),
         token1: reference.clone(),
-        tick: Some(integer("0")),
-        fee_tier: integer("3000"),
+        tick: Some(BigDecimal::from(0)),
+        fee_tier: BigDecimal::from(3000),
         ..Default::default()
     };
     let token0 = Token {
         id: "target".into(),
-        decimals: integer("34"),
+        decimals: BigDecimal::from(34),
         derived_eth: decimal("0.3333333333333333333333333333333333"),
         whitelist_pools: vec!["pricing".into()],
         ..Default::default()
     };
     let token1 = Token {
         id: reference.clone(),
-        decimals: integer("34"),
-        derived_eth: integer("1"),
+        decimals: BigDecimal::from(34),
+        derived_eth: BigDecimal::from(1),
         ..Default::default()
     };
     let bundle = Bundle {
@@ -720,7 +841,7 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
         id: "pricing".into(),
         token0: "target".into(),
         token1: reference.clone(),
-        liquidity: integer("1"),
+        liquidity: BigDecimal::from(1),
         total_value_locked_token1: decimal("100"),
         token1_price: decimal("0.3333333333333333333333333333333333"),
         ..Default::default()
@@ -816,7 +937,7 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
     let other_pool = Pool {
         id: other_pool_id.clone(),
         // Both pools reach txCount=3 in this transaction; their logs must stay distinct.
-        tx_count: integer("2"),
+        tx_count: BigDecimal::from(2),
         ..pool.clone()
     };
     store.save(&other_pool).await.unwrap();
@@ -1095,12 +1216,12 @@ async fn flash_updates_fee_growth_and_tick_daily_fields_keep_reference_copy_orde
         transaction_hash: "tx".into(),
         log_index: 0,
         origin: id.clone(),
-        gas_price: integer("1"),
+        gas_price: BigDecimal::from(1),
     };
     let mut tick = super::new_tick(&id, 60, &context).unwrap();
     tick.volume_token0 = decimal("11");
     tick.volume_token1 = decimal("22");
-    tick.fee_growth_outside0_x128 = integer("33");
+    tick.fee_growth_outside0_x128 = BigDecimal::from(33);
     crate::intervals::tick_day(&mut store, &context, &tick)
         .await
         .unwrap();
@@ -1116,8 +1237,8 @@ async fn flash_updates_fee_growth_and_tick_daily_fields_keep_reference_copy_orde
 }
 
 #[tokio::test]
-/// Verifies crossed ticks use signed spacing and read only initialized state.
-async fn crossed_ticks_preserve_signed_remainder_and_update_current_tick_before_limit() {
+/// Verifies positive/negative crossings, endpoint refresh and the existing distance limit.
+async fn crossed_ticks_refresh_spacing_boundaries_and_keep_the_distance_limit() {
     use crate::events::PoolMetadata;
     use alloy_primitives::{Address, B256};
     use alloy_sol_types::SolCall;
@@ -1148,80 +1269,81 @@ async fn crossed_ticks_preserve_signed_remainder_and_update_current_tick_before_
         transaction_hash: "tx".into(),
         log_index: 0,
         origin: id.clone(),
-        gas_price: integer("1"),
+        gas_price: BigDecimal::from(1),
     };
-    let mut store = Memory::default();
-    for index in [2, 0, -10, -9, -1010] {
-        let tick = super::new_tick(&id, index, &context).unwrap();
-        store.save(&tick).await.unwrap();
-    }
-    let mut pool = Pool {
-        id: id.clone(),
-        fee_tier: integer("500"),
-        tick: Some(integer("-9")),
-        ..Default::default()
-    };
-    // The descending loop starts at previous - (new % spacing), i.e. 2.
-    mapping
-        .crossed_ticks(&mut store, &pool, Some((-7).into()), &event, &context)
-        .await
-        .unwrap();
-    assert_eq!(
-        store
-            .get("Tick", &format!("{id}#2"))
-            .await
-            .unwrap()
-            .unwrap()["feeGrowthOutside0X128"],
-        "33"
-    );
-    assert_eq!(
-        store
-            .get("Tick", &format!("{id}#0"))
-            .await
-            .unwrap()
-            .unwrap()["feeGrowthOutside0X128"],
-        "0"
-    );
-    assert_eq!(
-        store
-            .get("Tick", &format!("{id}#-10"))
-            .await
-            .unwrap()
-            .unwrap()["feeGrowthOutside0X128"],
-        "0"
-    );
-    pool.tick = Some(integer("-1010"));
-    mapping
-        .crossed_ticks(&mut store, &pool, Some(10.into()), &event, &context)
-        .await
-        .unwrap();
-    assert_eq!(
-        store
-            .get("Tick", &format!("{id}#-1010"))
-            .await
-            .unwrap()
-            .unwrap()["feeGrowthOutside1X128"],
-        "44"
-    );
-    assert!(
-        store
-            .get("TickDayData", &format!("{id}#-1010-1"))
-            .await
-            .unwrap()
-            .is_some()
-    );
-    let requests = rpc.requests.lock().await;
-    assert_eq!(
-        requests.len(),
-        2,
-        "long crossings must only read the current initialized tick"
-    );
-    for (request, index) in requests.iter().zip([2, -1010]) {
-        let input = request["params"][0]["input"].as_str().unwrap();
-        let call =
-            PoolMetadata::ticksCall::abi_decode(&alloy_primitives::hex::decode(input).unwrap())
+    let cases: &[(i32, i32, &[i32])] = &[
+        (3, 17, &[10]),
+        (17, 3, &[10]),
+        (-17, -3, &[-10]),
+        (-3, -17, &[-10]),
+        (-7, -9, &[]),
+        (-3, -10, &[]),
+        (0, -1, &[0]),
+        (-1, 0, &[0]),
+        (10, 20, &[20]),
+        (20, 10, &[20]),
+        (10, 10, &[]),
+        (10, -1010, &[]),
+        (-1010, 10, &[10]),
+    ];
+    for &(old, new, expected) in cases {
+        rpc.requests.lock().await.clear();
+        let mut store = Memory::default();
+        for index in [-1010, -10, 0, 2, 6, 10, 16, 20] {
+            store
+                .save(&super::new_tick(&id, index, &context).unwrap())
+                .await
                 .unwrap();
-        assert_eq!(call.tick.to_string(), index.to_string());
-        assert_eq!(request["params"][1]["blockHash"], hash.to_string());
+        }
+        let pool = Pool {
+            id: id.clone(),
+            fee_tier: BigDecimal::from(500),
+            tick: Some(BigDecimal::from(new)),
+            ..Default::default()
+        };
+        mapping
+            .crossed_ticks(
+                &mut store,
+                &pool,
+                Some(BigDecimal::from(old)),
+                &event,
+                &context,
+            )
+            .await
+            .unwrap();
+        for index in [-1010, -10, 0, 2, 6, 10, 16, 20] {
+            let tick = store
+                .get("Tick", &format!("{id}#{index}"))
+                .await
+                .unwrap()
+                .unwrap();
+            let refreshed = expected.contains(&index);
+            assert_eq!(
+                tick["feeGrowthOutside0X128"],
+                if refreshed { "33" } else { "0" }
+            );
+            assert_eq!(
+                tick["feeGrowthOutside1X128"],
+                if refreshed { "44" } else { "0" }
+            );
+            assert_eq!(
+                store
+                    .get("TickDayData", &format!("{id}#{index}-1"))
+                    .await
+                    .unwrap()
+                    .is_some(),
+                refreshed
+            );
+        }
+        let requests = rpc.requests.lock().await;
+        assert_eq!(requests.len(), expected.len(), "crossing {old} -> {new}");
+        for (request, index) in requests.iter().zip(expected) {
+            let input = request["params"][0]["input"].as_str().unwrap();
+            let call =
+                PoolMetadata::ticksCall::abi_decode(&alloy_primitives::hex::decode(input).unwrap())
+                    .unwrap();
+            assert_eq!(call.tick.to_string(), index.to_string());
+            assert_eq!(request["params"][1]["blockHash"], hash.to_string());
+        }
     }
 }

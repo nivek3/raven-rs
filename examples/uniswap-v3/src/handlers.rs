@@ -19,6 +19,7 @@ use raven_engine::{
     EngineError, Entity, EntityStore, EntityStoreExt, Handler, RavenError, RavenResult,
 };
 use raven_evm::{LogUpdate, ParsedLog, event_id};
+use rpc_block_crawler_datasource::RpcError;
 use std::{future::IntoFuture, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uniswap_v3_sdk::utils::get_sqrt_ratio_at_tick;
@@ -109,7 +110,7 @@ impl<P: Provider> Mapping<P> {
             {
                 Ok(None)
             }
-            Err(error) => Err(RavenError::Source(Box::new(error))),
+            Err(error) => Err(RpcError::Request(error).into()),
         }
     }
 
@@ -127,7 +128,7 @@ impl<P: Provider> Mapping<P> {
             )
             .await
             .map_err(|_| ExampleError::RequestTimeout)?
-            .map_err(|error| RavenError::Source(Box::new(error)))?
+            .map_err(RpcError::Request)?
             .ok_or(EngineError::MissingBlock)?;
             if block.header.hash != event.block_hash
                 || block.header.inner.number != event.block_number
@@ -152,11 +153,10 @@ impl<P: Provider> Mapping<P> {
             transaction_hash: transaction_hash.to_string(),
             log_index: event.log_index,
             origin: transaction.inner.signer().to_string().to_lowercase(),
-            gas_price: integer(
-                &transaction
+            gas_price: BigDecimal::from(
+                transaction
                     .effective_gas_price
-                    .ok_or(ExampleError::MissingMetadata)?
-                    .to_string(),
+                    .ok_or(ExampleError::MissingMetadata)?,
             ),
         })
     }
@@ -409,13 +409,15 @@ impl<P: Provider> Mapping<P> {
         let context = self.context(event).await?;
         pool.sqrt_price = integer(&event.value.sqrtPriceX96.to_string());
         pool.tick = Some(integer(&event.value.tick.to_string()));
+        let mut token0: Token = load(store, &pool.token0).await?;
+        let mut token1: Token = load(store, &pool.token1).await?;
+        (pool.token1_price, pool.token0_price) =
+            sqrt_prices(event.value.sqrtPriceX96, &token0.decimals, &token1.decimals)?;
         store.save(&pool).await?;
         let mut bundle: Bundle = load(store, "1").await?;
         bundle.eth_price_usd = self.eth_price(store).await?;
         store.save(&bundle).await?;
         crate::intervals::pool_intervals(store, &context, &pool, None).await?;
-        let mut token0: Token = load(store, &pool.token0).await?;
-        let mut token1: Token = load(store, &pool.token1).await?;
         let price0 = self.derived(store, &token0).await?;
         let price1 = self.derived(store, &token1).await?;
         token0.derived_eth = price0;
@@ -482,6 +484,8 @@ impl<P: Provider> Mapping<P> {
             ),
         );
         let mint = matches!(kind, LiquidityKind::Mint);
+        let amount = integer(&amount);
+        let delta = if mint { amount.clone() } else { -&amount };
         factory.total_value_locked_eth =
             round34(factory.total_value_locked_eth.clone() - pool.total_value_locked_eth.clone());
         let delta0 = if mint {
@@ -513,11 +517,7 @@ impl<P: Provider> Mapping<P> {
             && tick >= &BigDecimal::from(lower)
             && tick < &BigDecimal::from(upper)
         {
-            pool.liquidity += if mint {
-                integer(&amount)
-            } else {
-                -integer(&amount)
-            };
+            pool.liquidity += &delta;
         }
         self.tvl(&mut pool, &token0, &token1, &mut factory, &bundle);
         self.transaction(store, &context).await?;
@@ -537,11 +537,6 @@ impl<P: Provider> Mapping<P> {
         let mut lower_tick_value = None;
         let mut upper_tick_value = None;
         if let (Some(mut lower_tick), Some(mut upper_tick)) = (lower_tick, upper_tick) {
-            let delta = if mint {
-                integer(&amount)
-            } else {
-                -integer(&amount)
-            };
             lower_tick.liquidity_gross += delta.clone();
             lower_tick.liquidity_net += delta.clone();
             upper_tick.liquidity_gross += delta.clone();
@@ -573,7 +568,7 @@ impl<P: Provider> Mapping<P> {
                 owner: owner.to_string().to_lowercase(),
                 sender: sender.map(|sender| sender.to_string().to_lowercase()),
                 origin: context.origin.clone(),
-                amount: integer(&amount),
+                amount,
                 amount0,
                 amount1,
                 amount_usd: Some(usd),
@@ -592,7 +587,7 @@ impl<P: Provider> Mapping<P> {
                 token1: pool.token1.clone(),
                 owner: Some(owner.to_string().to_lowercase()),
                 origin: context.origin.clone(),
-                amount: integer(&amount),
+                amount,
                 amount0,
                 amount1,
                 amount_usd: Some(usd),

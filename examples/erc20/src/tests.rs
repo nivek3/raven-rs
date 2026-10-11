@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use alloy_primitives::{Bytes, U256};
 use alloy_provider::ProviderBuilder;
 use alloy_transport::mock::Asserter;
-use raven_engine::EntityValue;
+use raven_engine::{EntityValue, RavenError};
 use serde_json::json;
 
 #[derive(Default)]
@@ -344,6 +344,43 @@ async fn invalid_abi_uses_defaults_but_rpc_errors_do_not_create_contracts() {
         Err(RavenError::Source(_))
     ));
     assert!(unavailable.0.is_empty());
+}
+
+#[tokio::test]
+/// Verifies handler errors hide RPC details without losing their underlying cause.
+async fn rpc_errors_hide_response_details_and_preserve_the_source() {
+    use std::error::Error;
+
+    let responses = Asserter::new();
+    let provider = ProviderBuilder::new()
+        .disable_recommended_fillers()
+        .connect_mocked_client(responses.clone());
+    let handler = TransferHandler::new(Arc::new(provider), Duration::from_secs(1));
+    let event = event(1, 0, Address::ZERO, Address::repeat_byte(1), U256::from(1));
+    let mut entities = MemoryEntities::default();
+    let message = "RPC failed for https://rpc.invalid/redaction-sentinel";
+    responses.push_failure_msg(message);
+    let metadata_error = handler
+        .metadata(event.address, event.block_hash, IERC20Metadata::nameCall)
+        .await
+        .unwrap_err();
+    responses.push_failure_msg(message);
+    let timestamp_error = handler
+        .timestamp(&mut entities, &event, &event.transaction_hash.to_string())
+        .await
+        .unwrap_err();
+    for error in [metadata_error, timestamp_error] {
+        assert_eq!(error.to_string(), "source error: Alloy RPC request failed");
+        assert!(
+            error
+                .source()
+                .unwrap()
+                .source()
+                .unwrap()
+                .to_string()
+                .contains("redaction-sentinel")
+        );
+    }
 }
 
 #[tokio::test]
