@@ -129,11 +129,9 @@ impl<T: Provider> RpcLogCrawler<T> {
     /// Loads the requested block payload and verifies its height.
     async fn block_at(&self, number: u64) -> RavenResult<Block> {
         let filter = self.filter.as_ref();
-        let request = self.provider.get_block_by_number(number.into());
-        let request = if filter.blocks {
-            request.full()
-        } else {
-            request
+        let mut request = self.provider.get_block_by_number(number.into());
+        if filter.blocks {
+            request = request.full()
         };
         let block = self
             .metrics
@@ -209,9 +207,8 @@ impl<T: Provider> RpcLogCrawler<T> {
             self.logs_in_range(start, end),
         )?;
 
-        let mut headers = Vec::with_capacity(blocks.len());
+        let mut headers: Vec<LiteBlockHeader> = Vec::with_capacity(blocks.len());
         let mut canonical_hashes = BTreeMap::new();
-        let mut previous: Option<LiteBlockHeader> = None;
         for (offset, block) in blocks.iter().enumerate() {
             let number = start
                 .checked_add(u64::try_from(offset).map_err(|_| PositionError::HeightOverflow)?)
@@ -220,17 +217,13 @@ impl<T: Provider> RpcLogCrawler<T> {
             if header.number != number {
                 return Err(EngineError::InvalidBlock.into());
             }
-            if previous
-                .as_ref()
-                .is_some_and(|parent| !header.extends(parent))
-            {
+            if headers.last().is_some_and(|parent| !header.extends(parent)) {
                 return Err(EngineError::SourceChanged.into());
             }
             canonical_hashes.insert(number, header.hash);
-            previous = Some(header.clone());
             headers.push(header);
         }
-        if previous.as_ref() != Some(&anchor) {
+        if headers.last() != Some(&anchor) {
             return Err(EngineError::SourceChanged.into());
         }
 

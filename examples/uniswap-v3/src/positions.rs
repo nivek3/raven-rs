@@ -2,6 +2,7 @@
 use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
 use alloy_sol_types::SolEvent;
+use bigdecimal::BigDecimal;
 use raven_engine::{EntityStore, EntityStoreExt, RavenError, RavenResult};
 use raven_evm::{LogUpdate, ParsedLog};
 
@@ -116,8 +117,8 @@ impl<P: Provider> Mapping<P> {
             owner: position.owner.clone(),
             pool: position.pool.clone(),
             position: position.id.clone(),
-            block_number: integer(&context.block_number.to_string()),
-            timestamp: integer(&context.timestamp.to_string()),
+            block_number: BigDecimal::from(context.block_number),
+            timestamp: BigDecimal::from(context.timestamp),
             liquidity: position.liquidity.clone(),
             deposited_token0: position.deposited_token0.clone(),
             deposited_token1: position.deposited_token1.clone(),
@@ -162,20 +163,20 @@ impl<P: Provider> Mapping<P> {
         ) else {
             return Ok(());
         };
-        let liquidity = integer(&liquidity.to_string());
+        let liquidity = BigDecimal::from(liquidity);
         position.liquidity = if increase {
-            position.liquidity.clone() + liquidity
+            &position.liquidity + liquidity
         } else {
-            position.liquidity.clone() - liquidity
+            &position.liquidity - liquidity
         };
         let amount0 = units(&raw0.to_string(), &token0.decimals.to_string());
         let amount1 = units(&raw1.to_string(), &token1.decimals.to_string());
         if increase {
-            position.deposited_token0 = round34(position.deposited_token0.clone() + amount0);
-            position.deposited_token1 = round34(position.deposited_token1.clone() + amount1);
+            position.deposited_token0 = round34(&position.deposited_token0 + amount0);
+            position.deposited_token1 = round34(&position.deposited_token1 + amount1);
         } else {
-            position.withdrawn_token0 = round34(position.withdrawn_token0.clone() + amount0);
-            position.withdrawn_token1 = round34(position.withdrawn_token1.clone() + amount1);
+            position.withdrawn_token0 = round34(&position.withdrawn_token0 + amount0);
+            position.withdrawn_token1 = round34(&position.withdrawn_token1 + amount1);
         }
         self.position_fees(&mut position, event, token_id).await?;
         store.save(&position).await?;
@@ -204,10 +205,8 @@ impl<P: Provider> Mapping<P> {
                 &token0.decimals.to_string(),
             );
             // The indexed rule adds amount0/decimals0 to both fee fields.
-            position.collected_fees_token0 =
-                round34(position.collected_fees_token0.clone() + amount.clone());
-            position.collected_fees_token1 =
-                round34(position.collected_fees_token1.clone() + amount);
+            position.collected_fees_token0 = round34(&position.collected_fees_token0 + &amount);
+            position.collected_fees_token1 = round34(&position.collected_fees_token1 + amount);
         }
         self.position_fees(&mut position, event, event.value.tokenId)
             .await?;

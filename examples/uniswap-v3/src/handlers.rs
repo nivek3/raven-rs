@@ -19,6 +19,7 @@ use raven_engine::{
     EngineError, Entity, EntityStore, EntityStoreExt, Handler, RavenError, RavenResult,
 };
 use raven_evm::{LogUpdate, ParsedLog, event_id};
+use rpc_block_crawler_datasource::RpcError;
 use std::{future::IntoFuture, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uniswap_v3_sdk::utils::get_sqrt_ratio_at_tick;
@@ -109,7 +110,7 @@ impl<P: Provider> Mapping<P> {
             {
                 Ok(None)
             }
-            Err(error) => Err(RavenError::Source(Box::new(error))),
+            Err(error) => Err(RpcError::Request(error).into()),
         }
     }
 
@@ -127,7 +128,7 @@ impl<P: Provider> Mapping<P> {
             )
             .await
             .map_err(|_| ExampleError::RequestTimeout)?
-            .map_err(|error| RavenError::Source(Box::new(error)))?
+            .map_err(RpcError::Request)?
             .ok_or(EngineError::MissingBlock)?;
             if block.header.hash != event.block_hash
                 || block.header.inner.number != event.block_number
@@ -137,12 +138,14 @@ impl<P: Provider> Mapping<P> {
             *cached = Some((event.block_hash, block));
         }
         let block = &cached.as_ref().ok_or(EngineError::MissingBlock)?.1;
+        let index =
+            usize::try_from(event.transaction_index).map_err(|_| ExampleError::MissingMetadata)?;
         let transaction = block
             .transactions
             .as_transactions()
             .ok_or(ExampleError::MissingMetadata)?
-            .iter()
-            .find(|transaction| *transaction.inner.tx_hash() == transaction_hash)
+            .get(index)
+            .filter(|transaction| *transaction.inner.tx_hash() == transaction_hash)
             .ok_or(ExampleError::MissingMetadata)?;
         Ok(Context {
             timestamp: block.header.inner.timestamp,
@@ -150,11 +153,10 @@ impl<P: Provider> Mapping<P> {
             transaction_hash: transaction_hash.to_string(),
             log_index: event.log_index,
             origin: transaction.inner.signer().to_string().to_lowercase(),
-            gas_price: integer(
-                &transaction
+            gas_price: BigDecimal::from(
+                transaction
                     .effective_gas_price
-                    .ok_or(ExampleError::MissingMetadata)?
-                    .to_string(),
+                    .ok_or(ExampleError::MissingMetadata)?,
             ),
         })
     }
@@ -407,13 +409,15 @@ impl<P: Provider> Mapping<P> {
         let context = self.context(event).await?;
         pool.sqrt_price = integer(&event.value.sqrtPriceX96.to_string());
         pool.tick = Some(integer(&event.value.tick.to_string()));
+        let mut token0: Token = load(store, &pool.token0).await?;
+        let mut token1: Token = load(store, &pool.token1).await?;
+        (pool.token1_price, pool.token0_price) =
+            sqrt_prices(event.value.sqrtPriceX96, &token0.decimals, &token1.decimals)?;
         store.save(&pool).await?;
         let mut bundle: Bundle = load(store, "1").await?;
         bundle.eth_price_usd = self.eth_price(store).await?;
         store.save(&bundle).await?;
         crate::intervals::pool_intervals(store, &context, &pool, None).await?;
-        let mut token0: Token = load(store, &pool.token0).await?;
-        let mut token1: Token = load(store, &pool.token1).await?;
         let price0 = self.derived(store, &token0).await?;
         let price1 = self.derived(store, &token1).await?;
         token0.derived_eth = price0;
@@ -437,7 +441,7 @@ impl<P: Provider> Mapping<P> {
         );
         pool.total_value_locked_eth = eth.clone();
         pool.total_value_locked_usd = round34(eth.clone() * bundle.eth_price_usd.clone());
-        factory.total_value_locked_eth = round34(factory.total_value_locked_eth.clone() + eth);
+        factory.total_value_locked_eth = round34(&factory.total_value_locked_eth + eth);
         factory.total_value_locked_usd =
             round34(factory.total_value_locked_eth.clone() * bundle.eth_price_usd.clone());
     }
@@ -480,6 +484,8 @@ impl<P: Provider> Mapping<P> {
             ),
         );
         let mint = matches!(kind, LiquidityKind::Mint);
+        let amount = integer(&amount);
+        let delta = if mint { amount.clone() } else { -&amount };
         factory.total_value_locked_eth =
             round34(factory.total_value_locked_eth.clone() - pool.total_value_locked_eth.clone());
         let delta0 = if mint {
@@ -492,8 +498,8 @@ impl<P: Provider> Mapping<P> {
         } else {
             round34(BigDecimal::from(0) - amount1.clone())
         };
-        token0.total_value_locked = round34(token0.total_value_locked.clone() + delta0.clone());
-        token1.total_value_locked = round34(token1.total_value_locked.clone() + delta1.clone());
+        token0.total_value_locked = round34(&token0.total_value_locked + &delta0);
+        token1.total_value_locked = round34(&token1.total_value_locked + &delta1);
         // Mint/Burn round the USD price before multiplying by the balance.
         for token in [&mut token0, &mut token1] {
             token.total_value_locked_usd = round34(
@@ -501,8 +507,8 @@ impl<P: Provider> Mapping<P> {
                     * round34(token.derived_eth.clone() * bundle.eth_price_usd.clone()),
             );
         }
-        pool.total_value_locked_token0 = round34(pool.total_value_locked_token0.clone() + delta0);
-        pool.total_value_locked_token1 = round34(pool.total_value_locked_token1.clone() + delta1);
+        pool.total_value_locked_token0 = round34(&pool.total_value_locked_token0 + delta0);
+        pool.total_value_locked_token1 = round34(&pool.total_value_locked_token1 + delta1);
         factory.tx_count += BigDecimal::from(1);
         pool.tx_count += BigDecimal::from(1);
         token0.tx_count += BigDecimal::from(1);
@@ -511,11 +517,7 @@ impl<P: Provider> Mapping<P> {
             && tick >= &BigDecimal::from(lower)
             && tick < &BigDecimal::from(upper)
         {
-            pool.liquidity += if mint {
-                integer(&amount)
-            } else {
-                -integer(&amount)
-            };
+            pool.liquidity += &delta;
         }
         self.tvl(&mut pool, &token0, &token1, &mut factory, &bundle);
         self.transaction(store, &context).await?;
@@ -535,11 +537,6 @@ impl<P: Provider> Mapping<P> {
         let mut lower_tick_value = None;
         let mut upper_tick_value = None;
         if let (Some(mut lower_tick), Some(mut upper_tick)) = (lower_tick, upper_tick) {
-            let delta = if mint {
-                integer(&amount)
-            } else {
-                -integer(&amount)
-            };
             lower_tick.liquidity_gross += delta.clone();
             lower_tick.liquidity_net += delta.clone();
             upper_tick.liquidity_gross += delta.clone();
@@ -571,7 +568,7 @@ impl<P: Provider> Mapping<P> {
                 owner: owner.to_string().to_lowercase(),
                 sender: sender.map(|sender| sender.to_string().to_lowercase()),
                 origin: context.origin.clone(),
-                amount: integer(&amount),
+                amount,
                 amount0,
                 amount1,
                 amount_usd: Some(usd),
@@ -590,7 +587,7 @@ impl<P: Provider> Mapping<P> {
                 token1: pool.token1.clone(),
                 owner: Some(owner.to_string().to_lowercase()),
                 origin: context.origin.clone(),
-                amount: integer(&amount),
+                amount,
                 amount0,
                 amount1,
                 amount_usd: Some(usd),
@@ -663,38 +660,34 @@ impl<P: Provider> Mapping<P> {
         let fees_eth = round34(round34(eth.clone() * fee_tier.clone()) / decimal("1000000"));
         let fees = round34(round34(tracked.clone() * fee_tier) / decimal("1000000"));
         factory.tx_count += BigDecimal::from(1);
-        factory.total_volume_eth = round34(factory.total_volume_eth.clone() + eth.clone());
-        factory.total_volume_usd = round34(factory.total_volume_usd.clone() + tracked.clone());
-        factory.untracked_volume_usd =
-            round34(factory.untracked_volume_usd.clone() + untracked.clone());
-        factory.total_fees_eth = round34(factory.total_fees_eth.clone() + fees_eth);
-        factory.total_fees_usd = round34(factory.total_fees_usd.clone() + fees.clone());
+        factory.total_volume_eth = round34(&factory.total_volume_eth + &eth);
+        factory.total_volume_usd = round34(&factory.total_volume_usd + &tracked);
+        factory.untracked_volume_usd = round34(&factory.untracked_volume_usd + &untracked);
+        factory.total_fees_eth = round34(&factory.total_fees_eth + fees_eth);
+        factory.total_fees_usd = round34(&factory.total_fees_usd + &fees);
         factory.total_value_locked_eth =
             round34(factory.total_value_locked_eth.clone() - pool.total_value_locked_eth.clone());
         pool.tx_count += BigDecimal::from(1);
-        pool.volume_token0 = round34(pool.volume_token0.clone() + abs0.clone());
-        pool.volume_token1 = round34(pool.volume_token1.clone() + abs1.clone());
-        pool.volume_usd = round34(pool.volume_usd.clone() + tracked.clone());
-        pool.untracked_volume_usd = round34(pool.untracked_volume_usd.clone() + untracked.clone());
-        pool.fees_usd = round34(pool.fees_usd.clone() + fees.clone());
+        pool.volume_token0 = round34(&pool.volume_token0 + &abs0);
+        pool.volume_token1 = round34(&pool.volume_token1 + &abs1);
+        pool.volume_usd = round34(&pool.volume_usd + &tracked);
+        pool.untracked_volume_usd = round34(&pool.untracked_volume_usd + &untracked);
+        pool.fees_usd = round34(&pool.fees_usd + &fees);
         pool.liquidity = integer(&event.value.liquidity.to_string());
         pool.tick = Some(integer(&event.value.tick.to_string()));
         pool.sqrt_price = integer(&event.value.sqrtPriceX96.to_string());
-        pool.total_value_locked_token0 =
-            round34(pool.total_value_locked_token0.clone() + amount0.clone());
-        pool.total_value_locked_token1 =
-            round34(pool.total_value_locked_token1.clone() + amount1.clone());
+        pool.total_value_locked_token0 = round34(&pool.total_value_locked_token0 + &amount0);
+        pool.total_value_locked_token1 = round34(&pool.total_value_locked_token1 + &amount1);
         for (token, amount, abs) in [
             (&mut token0, amount0.clone(), abs0.clone()),
             (&mut token1, amount1.clone(), abs1.clone()),
         ] {
             token.tx_count += BigDecimal::from(1);
-            token.volume = round34(token.volume.clone() + abs);
-            token.total_value_locked = round34(token.total_value_locked.clone() + amount);
-            token.volume_usd = round34(token.volume_usd.clone() + tracked.clone());
-            token.untracked_volume_usd =
-                round34(token.untracked_volume_usd.clone() + untracked.clone());
-            token.fees_usd = round34(token.fees_usd.clone() + fees.clone());
+            token.volume = round34(&token.volume + abs);
+            token.total_value_locked = round34(&token.total_value_locked + amount);
+            token.volume_usd = round34(&token.volume_usd + &tracked);
+            token.untracked_volume_usd = round34(&token.untracked_volume_usd + &untracked);
+            token.fees_usd = round34(&token.fees_usd + &fees);
         }
         (pool.token1_price, pool.token0_price) =
             sqrt_prices(event.value.sqrtPriceX96, &token0.decimals, &token1.decimals)?;
