@@ -696,11 +696,8 @@ impl<P: Provider> Mapping<P> {
                 round34(token.untracked_volume_usd.clone() + untracked.clone());
             token.fees_usd = round34(token.fees_usd.clone() + fees.clone());
         }
-        (pool.token1_price, pool.token0_price) = sqrt_prices(
-            event.value.sqrtPriceX96,
-            &token0.decimals,
-            &token1.decimals,
-        )?;
+        (pool.token1_price, pool.token0_price) =
+            sqrt_prices(event.value.sqrtPriceX96, &token0.decimals, &token1.decimals)?;
         store.save(&pool).await?;
         bundle.eth_price_usd = self.eth_price(store).await?;
         store.save(&bundle).await?;
@@ -777,7 +774,9 @@ fn bytes_metadata(value: Option<alloy_primitives::B256>) -> String {
 
 /// Creates the initial tick record for a pool index.
 fn new_tick(pool: &str, index: i32, context: &Context) -> RavenResult<Tick> {
-    let tick = index.try_into().map_err(|_| ExampleError::InvalidPoolState)?;
+    let tick = index
+        .try_into()
+        .map_err(|_| ExampleError::InvalidPoolState)?;
     let sqrt = get_sqrt_ratio_at_tick(tick).map_err(ExampleError::from)?;
     let (price0, price1) = sqrt_prices(sqrt, &BigDecimal::from(0), &BigDecimal::from(0))?;
     Ok(Tick {

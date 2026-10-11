@@ -778,7 +778,10 @@ async fn mint_burn_and_swap_keep_the_reference_usd_rounding_order() {
     ] {
         let id = 1_000_000u128 + log_index as u128;
         let stored = store.get(kind, &id.to_string()).await.unwrap().unwrap();
-        assert_eq!(stored["id"].as_number().and_then(|id| id.as_u128()), Some(id));
+        assert_eq!(
+            stored["id"].as_number().and_then(|id| id.as_u128()),
+            Some(id)
+        );
         assert_eq!(stored["pool"].as_str(), Some(expected_pool.as_str()));
         assert_decimal(&stored["logIndex"], &log_index.to_string());
     }
