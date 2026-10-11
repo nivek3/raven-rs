@@ -370,7 +370,8 @@ fn sdk_prices_preserve_direction_decimal_scaling_and_tick_bounds() {
             decimal("1.000011927620661277813596104229921"),
         )
     );
-    let (_, inverse) = sqrt_prices(U160::from(1), &BigDecimal::from(0), &BigDecimal::from(0)).unwrap();
+    let (_, inverse) = sqrt_prices(U160::from(1), &BigDecimal::from(0), &BigDecimal::from(0))
+        .expect("invalid prices");
     assert_eq!(
         inverse,
         decimal("6277101735386680763835789423207666416102355444464034512896")
@@ -399,10 +400,9 @@ fn sdk_prices_preserve_direction_decimal_scaling_and_tick_bounds() {
 #[test]
 /// Verifies integer entities remain exact while decimal operations use 34 digits.
 fn entity_uint256_round_trip_is_exact_while_decimal_operations_round_to_34_digits() {
-    let maximum =
-        "115792089237316195423570985008687907853269984665640564039457584007913129639935"
-            .parse::<BigDecimal>()
-            .unwrap();
+    let maximum = "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        .parse::<BigDecimal>()
+        .unwrap();
     let token = Token {
         id: "token".into(),
         total_supply: maximum.clone(),
